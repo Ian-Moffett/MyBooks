@@ -1,2 +1,134 @@
+----------   Introduction   ----------
+
+
+You can find the template for the project here:
+
+https://github.com/Ian-Moffett/HSCorpOS/tree/template
+
+
+You will need to install qemu which is a 
+virtual machine program to run your OS.
+
+
+----------   Hello, World!   ----------
+
+
 OSDEV: welcome to your new journey!
 
+You will need to edit gnu-efi/bootloader/main.c
+
+First include efi.h
+and also include efilib.h.
+
+You will need to create an entry point called efi_main
+which will return EFI_STATUS.
+
+This function takes 2 parameters: 
+
+- EFI_HANDLE imageHandle
+- EFI_SYSTEM_TABLE* systemTable
+
+
+Inside the main function you are gonna have
+to initalize the library by calling 
+InitalizeLib and passing imageHandle and systemTable.
+
+----------   Hello, World!   ----------
+
+Use the Print function like so:
+Print(L"Any text here");
+    
+
+And return EFI_SUCESS.
+
+L means long char*.
+
+Now go back to the original folder you were in before and type:
+make
+
+Now, type make nfs,
+press enter.
+
+Congrats! You have done your first Hello World in your OS!
+
+
+----------  Loading your first kernel.   ----------
+
+
+It is time for you to make a kernel!
+You will need to load the elf program header
+of your compiled kernel into memory
+and then jump to it.
+
+How do we do that?
+Well first we must load it into memory lol.
+
+You will want to create a function that can load a file.
+The function will return EFI_FILE* and it will take
+
+- EFI_FILE* directory
+- CHAR16* path
+- EFI_HANDLE imageHandle
+- EFI_SYSTEM_TABLE* sysTable
+
+Now you want to prepare a variable with type:
+EFI_FILE* called fileres.
+
+That will contain the loaded file when we 
+finished loading it.
+
+You also want to prepare a variable with type
+EFI_LOADED_IMAGE_PROTOCOL* 
+which will hold our loaded image.
+
+
+"But what is a protocol?"
+
+I am glad you asked! 
+A protocol serves to enable communication
+between separately built modules like drivers.
+
+You will need to get the filesystem that 
+the computer booting from.
+
+Use:
+sysTable->BootServices->HandleProtocol()
+and pass these three things in order:
+
+- imageHandle
+- &gEfiLoadedImageProtocolGuid
+- (void**)&loadedImage.
+
+Now create a variable of type:
+
+EFI_SIMPLE_FILE_SYSTEM_PROTOCOL*
+called filesystem.
+
+Now you need to get the filesystem protocol by calling
+sysTable->BootServices->HandleProtocol()
+and passing the following in order:
+
+- loadedImage->DeviceHandle
+- &gEfiSimpleFileSystemProtocolGuid
+- (void**)filesystem
+
+Now you want to check if the directory is NULL
+meaning the person who is calling loadFile is 
+requesting the root directory.
+
+If it is then set directory to root by calling
+filesystem->OpenVolume(filesystem, &directory)
+
+Don't worry if it is getting too complicated,
+I'll explain other functions better.
+
+Now you need to get the status by storing the result
+of directory->Open(directory, &loadedFile, path, EFI_FILE_MODE_READ,
+    EFI_FILE_READ_ONLY);
+
+inside a variable of type EFI_STATUS
+
+check if status doesn't equal EFI_SUCESS.
+If it doesn't then return NULL.
+
+Now return loadedFile.
