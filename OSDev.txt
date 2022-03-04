@@ -441,3 +441,14 @@ to loadFont(NULL, L"zap-light16.psf", imageHandle, sysTable);
 Now, check if newfont is NULL (if you made it return NULL when not found) 
 if it is then the font
 is not found.
+
+
+Now what you wanna do is make both the function poiunter and the kernel entry function
+take a psf1_font_t* argument as the font.
+
+Of course you ware going to have to copy the font stuff over 
+to the LFB driver in the kernel.
+
+
+Now you can write a putstring function with
+the helper putchar function.
