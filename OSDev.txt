@@ -110,7 +110,7 @@ and passing the following in order:
 
 - loadedImage->DeviceHandle
 - &gEfiSimpleFileSystemProtocolGuid
-- (void**)filesystem
+- (void**)&filesystem
 
 Now you want to check if the directory is NULL
 meaning the person who is calling loadFile is 
@@ -123,7 +123,7 @@ Don't worry if it is getting too complicated,
 I'll explain other functions better.
 
 Now you need to get the status by storing the result
-of directory->Open(directory, &loadedFile, path, EFI_FILE_MODE_READ,
+of directory->Open(directory, &fileres, path, EFI_FILE_MODE_READ,
     EFI_FILE_READ_ONLY);
 
 inside a variable of type EFI_STATUS
@@ -131,7 +131,7 @@ inside a variable of type EFI_STATUS
 check if status doesn't equal EFI_SUCESS.
 If it doesn't then return NULL.
 
-Now return loadedFile.
+Now return fileres.
 
 
 Now in our main function we need to check if the result of loadFile 
@@ -148,7 +148,7 @@ by loading it's ELF header.
 You will need to include elf.h
 
 Now define a variable of type Elf64_Ehdr
-which will be our header.
+which will be our headers.
 
 Define these variables of these types.
 
@@ -163,7 +163,8 @@ I will be refering the variables as.
 
 Now to get the information.
 
-Call kernel->GetInfo()
+
+Call kernel->GetInfo() to get fileinfo size.
 
 and pass the following:
 
@@ -183,7 +184,7 @@ and passing the following:
 
 - EfiLoaderData (don't worry about this).
 - fileInfoSize
-- (void**)fileInfo
+- (void**)&fileInfo
 
 Now get the size with sizeof(header) and store it in
 a varible of type UINTN  [size].
@@ -225,13 +226,14 @@ which will be our program headers.
 
 Now do 
 
-kernel->SetPosition(kernel, header.e_phoff)
+kernel->SetPosition(kernel, header.e_phoff);
 
 which will set the offset that it will load at in the array of bytes for the next
 time we call Read()
 
 Now create a variable of type UINTN which will be 
-called progheadersize.
+called progheadersize which will be equal to 
+header.phnum * header.e_phentsize.
 
 We need to allocate some memory for the program headers.
 
@@ -241,7 +243,7 @@ sysTable->BootServices->AllocatePool(EfiLoaderData, progheadersize, (void**)&pro
 
 Now we will read it info memory.
 
-kernel->Read(kernel, &size, programheaders)
+kernel->Read(kernel, &size, programheaders);
 
 Now do this:
 
