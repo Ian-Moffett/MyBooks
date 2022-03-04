@@ -372,3 +372,72 @@ void(*kernel_entry)() = ((__attribute__((sysv_abi))void(*)())kernelHeader.e_entr
 To this:
 
 void(*kernel_entry)(framebuffer_t*) = ((__attribute__((sysv_abi))void(*)(framebuffer_t*))kernelHeader.e_entry);
+
+
+Now you will need to decode a font file.
+
+Do this:
+
+#define PSF1_MAGIC0 0x00000036
+#define PSF1_MAGIC1 0x00000004
+
+
+typedef struct {
+    unsigned char magic[2];
+    unsigned char mode;
+    unsigned char chsize;
+} psf1_header_t;
+
+
+typedef struct { 
+    psf1_header_t* header;
+    void* glyphBuffer;
+} psf1_font_t;
+
+
+Now we need to create a function that loads the font.
+
+The function goes like this:
+
+psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
+    EFI_FILE* font = loadFile(dir, path, imageHandle, systable);
+
+    if (!(font)) {
+        return NULL;    // File does not exist.
+    }
+
+    psf1_header_t* fontHeader;
+    systable->BootServices->AllocatePool(EfiLoaderData, sizeof(psf1_header_t), (void**)&fontHeader);   // Allocate memory for header.
+    UINTN size = sizeof(psf1_header_t);
+    font->Read(font, &size, fontHeader);
+
+    if (!(fontHeader->magic[0] & PSF1_MAGIC0) || !(fontHeader->magic[1] & PSF1_MAGIC1)) {
+        return NULL;   // Format bad.
+    }
+
+    UINTN glyphBuffersize = fontHeader->chsize * 256;
+
+    if (fontHeader->mode == 1) {
+        glyphBuffersize = fontHeader->chsize * 512;
+    }
+
+    void* glyphBuffer;
+    font->SetPosition(font, sizeof(psf1_header_t));
+    systable->BootServices->AllocatePool(EfiLoaderData, glyphBuffersize, (void**)&glyphBuffer);
+    font->Read(font, &glyphBuffersize, glyphBuffer);
+
+    psf1_font_t* fontRes;
+    systable->BootServices->AllocatePool(EfiLoaderData, sizeof(psf1_font_t), (void**)&fontRes);
+
+    fontRes->header = fontHeader;
+    fontRes->glyphBuffer = glyphBuffer;
+    return fontRes;
+}
+
+
+Now in our main create a psf1_font_t* newfont which is equal
+to loadFont(NULL, L"zap-light16.psf", imageHandle, sysTable);
+
+Now, check if newfont is NULL (if you made it return NULL when not found) 
+if it is then the font
+is not found.
