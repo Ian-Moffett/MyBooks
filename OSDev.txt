@@ -452,3 +452,141 @@ to the LFB driver in the kernel.
 
 Now you can write a putstring function with
 the helper putchar function.
+
+
+
+
+----------  EFI Memory Map  ----------
+
+
+We can use the EFI memory map to find out
+what memory segments our kernel can use.
+
+We need the EFI memory map first.
+
+Go to gnu-efi/bootloader/main.c
+and edit it.
+
+Create a variable of type EFI_MEMORY_DESCRIPTOR*
+which will be our map.
+
+And three with UINTN which will be our
+mapSize mapKey and descriptorSize.
+
+Also create a variable of type UINT32 called
+descriptorVersion (don't worry about this).
+
+EFI_MEMORY_DESCRIPTOR descriptor is just points to a 
+struct that gives information like
+the number of pages of the memory segment,
+the physical address of the section and type.
+
+
+mapSize is just the size of the map.
+descriptor size is size of each descriptor
+entry.
+
+And map key is something we don't need to
+worry about.
+
+Do:
+
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);
+sysTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&map);
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);
+
+
+Also create a memory_info_t struct that will hold
+- EFI_MEMORY_DESCRIPTOR* map;
+- UINTN mapSize
+- UINTN mapDescriptorSize.
+
+
+Now do:
+
+memory_info_t mem_info = {
+    .map = map,
+    .mapSize = mapSize,
+    .mapDescriptorSize = descriptorSize
+};
+
+And make sure both the function pointer and 
+kernel_start take a mem_info struct as an
+argument.
+
+Also make sure bootservices is no longer active
+so watchdog doesn't think it has crashed
+and reboot the system by doing:
+
+sysTable->BootServices->ExitBootServices(imageHandle, mapKey);
+
+Do:
+
+mkdir kernel/src/drivers/memory/ kernel/src/drivers/memory/impl
+
+Create a file inside kernel/src/drivers/memory
+
+called memoryInfo.h
+
+Paste the memory_info struct you made
+in the bootloader and also do:
+
+extern const char* const memseg[];
+
+That will be defined in memoryInfo.c
+
+You will need to make a struct called
+memdesc_t.
+
+The following will be declared in the struct:
+
+- uint32_t type
+- void* physAddr
+- void* virtAddr
+- uint64_t numPages
+- uint64_t attr
+
+You will also need to include stdint.h
+
+Now, make a const char* array in memoryInfo.c 
+that holds the following:
+
+"EfiReservedMemoryType",
+"EfiLoaderCode",
+"EfiLoaderData",
+"EfiBootServicesCode",
+"EfiBootServicesData",
+"EfiRuntimeServicesCode",
+"EfiRuntimeServicesData",
+"EfiConventionalMemory",
+"EfiUnusableMemory",
+"EfiACPIReclaimMemory",
+"EfiACPIMemoryNVS",
+"EfiMemoryMappedIO",
+"EfiMemoryMappedIOPortSpace",
+"EfiPalCode",
+
+
+Now in kernel/src/kernel.c
+
+we need to see each memory map
+entry.
+
+We have to find how many entries we have by doing:
+
+uint64_t mMapEntries = (<mem_info_t instance>).mapSize / mapDescriptorSize;
+
+Now we will iterate through each entry:
+
+map IS DEFINED IN mem_info_t struct.
+
+for (int i = 0; i < mMapEntries; ++i) {
+    memdesc_t* desc = (memdesc_t*)((uint64_t)(<mem_info_t instance>) + (i * (<mem_info_t>).descriptorSize));
+}
+
+Now inside the loop you may print the 
+memory sections by including
+memoryInfo.h
+
+and doing <your print function>((<name of your const char* array>)[desc->type]);
+
