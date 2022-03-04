@@ -29,11 +29,10 @@ This function takes 2 parameters:
 - EFI_SYSTEM_TABLE* systemTable
 
 
-Inside the main function you are gonna have
-to initalize the library by calling 
+Inside the main function you should
+initalize the library by calling 
 InitalizeLib and passing imageHandle and systemTable.
 
-----------   Hello, World!   ----------
 
 Use the Print function like so:
 Print(L"Any text here\n");
