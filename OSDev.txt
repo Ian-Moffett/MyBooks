@@ -282,3 +282,70 @@ void(*kernel_entry)() = ((__attribute__((sysv_abi))void(*)())header.e_entry);
 And you can call it like so:
 
 kernel_entry();
+
+
+
+
+
+----------  GOP   ----------
+
+Want to write pixels to the screen?
+That's where graphics output protocol or GOP comes in.
+
+Let's get started.
+
+Create a function that returns framebuffer_t* called initGOP()
+
+It will take one parameter:
+
+EFI_SYSTEM_TABLE* sysTable.
+
+framebuffer_t will be defined later.
+
+We will need to get the GOP protocol GUID.
+
+Create a variable called gopGuid with type EFI_GUID and is set
+to EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID.
+Next, create a variable of type EFI_GRAPHICS_OUTPUT_PROTOCOL* called gop.
+Now create a variable of type EFI_STATUS called status
+and set it equal to uefi_call_wrapper(BS->LocateProtocol, 3, &gopGuid, NULL, (void**)&gop).
+uefi_call_wrapper() is just a little helper function to make calling
+certain UEFI functions easier.
+
+do:
+
+if (EFI_ERROR(status)) {
+    return NULL;
+}
+
+Now just create a struct called framebuffer which will
+look like this
+
+typedef struct {
+    void* baseAddr;
+    size_t bufferSize;
+    unsigned int width;
+    unsigned int height;
+    unsigned int ppsl;      // Pixels per scanline (don't worry about this).
+} framebuffer_t;
+
+
+Now inside your function that prepares GOP create a pointer instance
+of the framebuffer_t struct. 
+
+Do this:
+
+sysTable->BootServices->AllocatePool(EfiLoaderData, sizeof(framebuffer_t), (void**)&<framebuffer instance name>);
+
+
+Set it's baseAddr equal to (void*)gop->Mode->FrameBufferBase.
+Set it's bufferSize equal to gop->Mode->FrameBufferSize.
+Set it's width equal to gop->Mode->Info->HorizontalResolution.
+Set it's height equal to gop->Mode->Info->VerticalResolution.
+Set it's ppsl equal to gop->Mode->Info->PixelsPerScanLine.
+
+
+Now return the framebuffer.
+
+
+In efi_main create a frame_buffer_t* newBuffer = initalizeGOP(sysTable);
