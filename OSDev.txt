@@ -349,3 +349,26 @@ Now return the framebuffer.
 
 
 In efi_main create a frame_buffer_t* newBuffer = initalizeGOP(sysTable);
+
+
+Now you want to return to the normal directory do the following commands:
+
+mkdir kernel/drivers kernel/drivers/impl
+
+Now you want to edit kernel/drivers/FrameBuffer.h
+
+
+And you want to paste that framebuffer_t struct that you had in the bootloader.
+
+Now include FrameBuffer.h in kernel/src/kernel.c
+
+And make sure _start takes a pointer to framebuffer_t*.
+
+
+Now in the bootloader change the function pointer from this:
+
+void(*kernel_entry)() = ((__attribute__((sysv_abi))void(*)())kernelHeader.e_entry);
+
+To this:
+
+void(*kernel_entry)(framebuffer_t*) = ((__attribute__((sysv_abi))void(*)(framebuffer_t*))kernelHeader.e_entry);
