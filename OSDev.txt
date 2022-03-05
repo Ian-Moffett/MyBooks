@@ -598,3 +598,218 @@ memoryInfo.h
 
 and doing <your print function>((<name of your const char* array>)[desc->type]);
 
+
+
+----------  Global Descriptor Table (GDT)  ----------
+
+Create two folders:
+
+mkdir kernel/src/memory  kernel/src/memory/impl
+
+Now inside kernel/src/memory/ create a file
+called GDT.h
+
+You will need to includ stdint.h
+
+
+Create a packed struct called gdt_descriptor_t.
+You can pack it like this:
+
+typedef struct {
+} __attribute__((packed)) gdt_descriptor_t;
+
+The GDT descriptor tells the CPU where the GDT is 
+and how big it is.
+
+Inside gdt_descriptor_t you will need the following:
+
+- uint16_t size
+- uint64_t offset
+
+
+Now create another packed struct called gdt_entry_t.
+
+That will have the following:
+
+- uint16_t limit0 
+- uint16_t base0  
+- uint8_t base1
+- uint8_t access_byte    // Describes the memory segment.
+- uint8_t limit1
+- uint8_t flags
+- uint8_t base2
+
+Now, we need to create the actual GDT.
+
+Create a packed struct called gdt_t.
+
+It will have the following:
+
+- gdt_entry_t null
+- gdt_entry_t kernelcode
+- gdt_entry_t kerneldata
+- gdt_entry_t usernull
+- gdt_entry_t usercode
+- gdt_entry_t userdata
+
+And align it with __attribute__((aligned(0x1000))) 
+
+Make sure it also has the packed attribute.
+
+Now do: 
+
+extern gdt_t gdt.
+
+
+Now create a file with the path:
+
+Uh oh, scary line number. ✞ (don't worry about this lol) 
+
+
+kernel/src/memory/impl/GDT.c
+
+Create a multiarray with __attribute__((aligned(0x1000)))
+of type gdt_t called gdt like this:
+
+
+__attribute__((aligned(0x1000))) gdt_t gdt = {
+    {0, 0, 0, 0x00, 0x00, 0},  // Null descriptor.
+    {0, 0, 0, 0x9A, 0xA0, 0},  // Kernel code.
+    {0, 0, 0, 0x92, 0xA0, 0},  // Kernel data.
+    {0, 0, 0, 0x00, 0x00, 0},  // User null.
+    {0, 0, 0, 0x9A, 0xA0, 0},  // User code.
+    {0, 0, 0, 0x92, 0xA0, 0}   // User data.
+};
+
+
+We will need to edit kernel/Makefile
+so open that file up and add a variable called ASMC
+which equals nasm.
+
+Now create a variable under SRC called ASMSRC
+which will equal $(call rwildcard, $(SRCDIR), *.asm)
+
+And under OBJS do:
+OBJS += $(patsubst $(SRCDIR)/%.asm, $(OBJDIR)/%.asm.o, $(ASMSRC))
+
+Under the labels that look like this:
+
+kernel: $(OBJS) link
+$(OBJDIR)/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $^ -o $@
+
+You would want to write the following:
+
+$(OBJDUR)/%asm.o: $(SRCDIR)/%.asm
+    $(ASMC) $^ -felf64 -o $@
+
+Now, you will need to create a directory with the path
+kernel/src/memory/x86_64/GDT.asm
+
+Of course you will need to create the x86_64 folder.
+
+
+Inside the asm file you will need to tell
+the assembler to emit 64 bit code
+with:
+
+bits 64
+
+Now, create a label called load_gdt.
+
+Also do:
+
+global load_gdt
+
+Inside that label use:
+
+lgdt [rdi]
+
+Your file should look like this:
+
+bits 64
+load_gdt:
+    lgdt [rdi]
+
+
+Now we will need to move kernel data into segment registers
+into data segment by doing:
+
+mov ax, 0x10
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov ss, ax
+
+Your file should look like this:
+
+bits 64
+load_gdt:
+    lgdt [rdi]
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
+
+We need to deal with code segment now.
+Let's do a far return to set the code segment register.
+
+First, store the return address into rdi register with:
+
+pop rdi
+
+Now put the kernel code selector in rax like this:
+
+mov rax, 0x08
+
+Now we have to push both of them to the stack like so:
+
+push rax
+push rdi
+retfq           ; Far return.
+
+
+Your file should look like this:
+
+bits 64
+load_gdt:
+    lgdt [rdi]
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    pop rdi
+    mov rax, 0x08
+    push rax
+    push rdi
+    retfq       ; Far return.
+
+
+
+Now inside kernel/src/memory/GDT.h
+
+do:
+
+extern void load_gdt(gdt_descriptor_t* desc);
+
+Inside kernel/src/kernel.c
+
+you need to include kernel/src/memory/GDT.h
+and create a GDT descriptor like this:
+
+static gdt_descriptor_t gdt_desc = {
+    .size = sizeof(gdt) - 1,
+    .offset = (uint64_t)&gdt
+};
+
+
+Now load it:
+
+load_gdt(&gdt_desc);
