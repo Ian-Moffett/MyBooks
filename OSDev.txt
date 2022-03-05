@@ -467,8 +467,10 @@ We need the EFI memory map first.
 Go to gnu-efi/bootloader/main.c
 and edit it.
 
-Create a variable of type EFI_MEMORY_DESCRIPTOR*
-which will be our map.
+
+In efi_main create a variable 
+of type EFI_MEMORY_DESCRIPTOR*
+and is assigned to NULL which will be our map.
 
 And three with UINTN which will be our
 mapSize mapKey and descriptorSize.
@@ -491,9 +493,9 @@ worry about.
 
 Do:
 
-sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);
-sysTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&map);
-sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);   // Gets size.
+sysTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&map);    // Allocates memory for map.
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);          // Reads map into memory.
 
 
 Also create a memory_info_t struct that will hold
@@ -548,6 +550,12 @@ The following will be declared in the struct:
 
 You will also need to include stdint.h
 
+Make sure after you paste the memory_info_t 
+struct to replace EFI_MEMORY_DESCRIPTOR in 
+the struct to memdesc_t.
+
+Also, replace UINTN to uint64_t.
+
 Now, make a const char* array in memoryInfo.c 
 that holds the following:
 
@@ -569,19 +577,19 @@ that holds the following:
 
 Now in kernel/src/kernel.c
 
-we need to see each memory map
+We need to see each memory map
 entry.
 
 We have to find how many entries we have by doing:
 
-uint64_t mMapEntries = (<mem_info_t instance>).mapSize / mapDescriptorSize;
+uint64_t mMapEntries = (<mem_info_t instance>).mapSize / (<mem_info_t instance>).mapDescriptorSize;
 
 Now we will iterate through each entry:
 
 map IS DEFINED IN mem_info_t struct.
 
 for (int i = 0; i < mMapEntries; ++i) {
-    memdesc_t* desc = (memdesc_t*)((uint64_t)(<mem_info_t instance>) + (i * (<mem_info_t>).descriptorSize));
+    memdesc_t* desc = (memdesc_t*)((uint64_t)(<mem_info_t instance>).mMap + (i * (<mem_info_t>).descriptorSize));
 }
 
 Now inside the loop you may print the 
