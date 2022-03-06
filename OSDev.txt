@@ -284,9 +284,6 @@ And you can call it like so:
 kernel_entry();
 
 
-
-
-
 ----------  GOP   ----------
 
 Want to write pixels to the screen?
@@ -818,3 +815,34 @@ static gdt_descriptor_t gdt_desc = {
 Now load it:
 
 load_gdt(&gdt_desc);
+
+
+
+----------  Clearing the screen  ----------
+
+
+You can clear the screen by using a helper function I made.
+
+First edit kernel/src/drivers/FrameBuffer.h
+
+
+Now add this declaration:
+
+void clearScreen(canvas_t* canvas, unsigned int color);
+
+
+Now in the FrameBuffer source file make this definition:
+
+void clearScreen(canvas_t* canvas, unsigned int color) {
+    uint64_t bytesPerScanline = canvas->lfb->ppsl * 4;
+
+    for (int vsl = 0; vsl < canvas->lfb->height; ++vsl) {
+        uint64_t pixPtrBase = (uint64_t)canvas->lfb->baseAddr + (bytesPerScanline * vsl);
+        for (uint32_t* pixelPtr = (uint32_t*)pixPtrBase; pixelPtr < (uint32_t*)(pixPtrBase + bytesPerScanline); ++pixelPtr) {
+            *pixelPtr = color;
+        }
+    }
+}
+
+
+Feel free to use it when you need to!
