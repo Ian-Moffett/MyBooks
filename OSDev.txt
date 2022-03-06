@@ -659,14 +659,13 @@ Make sure it also has the packed attribute.
 Now do: 
 
 extern gdt_t gdt.
-
+void load_gdt(gdt_descriptor_t* desc);
 
 Now create a file with the path:
-
+kernel/src/memory/impl/GDT.c
 Uh oh, scary line number. ✞ (don't worry about this lol) 
 
 
-kernel/src/memory/impl/GDT.c
 
 Create a multiarray with __attribute__((aligned(0x1000)))
 of type gdt_t called gdt like this:
@@ -687,11 +686,10 @@ so open that file up and add a variable called ASMC
 which equals nasm.
 
 Now create a variable under SRC called ASMSRC
-which will equal $(call rwildcard, $(SRCDIR), *.asm)
+which will equal $(call rwildcard,$(SRCDIR),*.asm)
 
 And under OBJS do:
 OBJS += $(patsubst $(SRCDIR)/%.asm, $(OBJDIR)/%.asm.o, $(ASMSRC))
-
 Under the labels that look like this:
 
 kernel: $(OBJS) link
@@ -701,52 +699,51 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 
 You would want to write the following:
 
-$(OBJDUR)/%asm.o: $(SRCDIR)/%.asm
-    $(ASMC) $^ -felf64 -o $@
+$(OBJDIR)/%.asm.o: $(SRCDIR)/%.asm
+	$(ASMC) $^ -felf64 -o $@
 
-Now, you will need to create a directory with the path
-kernel/src/memory/x86_64/GDT.asm
-
-Of course you will need to create the x86_64 folder.
+Now, you will need to create a file with the path
+kernel/src/memory/GDT.asm
 
 
-Inside the asm file you will need to tell
-the assembler to emit 64 bit code
+Put global loadGdt to make the label global.
+
+Then you will need to tell the assembler to emit 64 bit code
 with:
 
 bits 64
 
-Now, create a label called load_gdt.
+Now create a label like this:
 
-Also do:
+loadGdt:
+    ; Some code.
 
-global load_gdt
 
-Inside that label use:
+Clear interrupts with cli
+then load the GDT with:
 
 lgdt [rdi]
 
-Your file should look like this:
 
+Your file should look like this now:
+
+global loadGdt
 bits 64
-load_gdt:
+
+loadGdt:
+    cli
     lgdt [rdi]
 
-
-Now we will need to move kernel data into segment registers
-into data segment by doing:
-
-mov ax, 0x10
-mov ds, ax
-mov es, ax
-mov fs, ax
-mov gs, ax
-mov ss, ax
+Make sure to put the kernel data selector in AX
+and then set segment registers to the data selector.
 
 Your file should look like this:
 
+global loadGdt
 bits 64
-load_gdt:
+
+loadGdt:
+    cli
     lgdt [rdi]
     mov ax, 0x10
     mov ds, ax
@@ -755,29 +752,35 @@ load_gdt:
     mov gs, ax
     mov ss, ax
 
+Make sure to get the return address and storing it in RDI.
 
-We need to deal with code segment now.
-Let's do a far return to set the code segment register.
-
-First, store the return address into rdi register with:
+Return address is first thing on stack frame so you can 
+just use pop like this:
 
 pop rdi
 
-Now put the kernel code selector in rax like this:
+Now, move the kernel code selector into RAX
+then push it to the stack 
 
-mov rax, 0x08
+Now create a label after loadGdt label called done
 
-Now we have to push both of them to the stack like so:
+inside that label put a jump instruction to RDI.
+Now back inside loadGdt label:
 
-push rax
-push rdi
-retfq           ; Far return.
+You will have to push the address of the done label to the stack
+with the push instruction
+
+then preform a far return with retfq
+
+Your file should look like this now:
 
 
-Your file should look like this:
 
+global loadGdt
 bits 64
-load_gdt:
+
+loadGdt:
+    cli
     lgdt [rdi]
     mov ax, 0x10
     mov ds, ax
@@ -788,9 +791,11 @@ load_gdt:
     pop rdi
     mov rax, 0x08
     push rax
-    push rdi
-    retfq       ; Far return.
+    push done
+    retfq
 
+done:
+    jmp rdi
 
 
 Now inside kernel/src/memory/GDT.h
