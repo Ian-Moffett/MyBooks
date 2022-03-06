@@ -859,87 +859,74 @@ kernel/src/interrupts/impl/IDT.c
 in IDT.h you need to do the following:
 
 include stdint.h and create an IDT descriptor.
+
+Define these macros
+
+#define TRAP_GATE_FLAGS 0x8F
+#define INT_GATE_FLAGS 0x8E
+#define INT_GATE_USER_FLAGS 0xEE
+
 A IDT descriptor describes an interrupt.
 
 Inside your IDT descriptor struct it will have
 the following:
 
-- uint16_t isr_addr_low
-- uint16_t selector             // Will be used to determain what segment to switch to during interrupt.
-- uint8_t ist : 3
-- uint8_t reserved : 5
-- uint8_t attr : 4
-- uint8_t zero1 : 1
-- uint8_t dpl : 2           // Descriptor privellege level.
-- uint8_t p : 1             // Present.
-- uint16_t isr_addr_middle
-- uint32_t isr_addr_high
-- uint32_t reserved2
+- uint16_t isr_low          // Low bits of the ISR.
+- uint16_t selector         // The segment the interrup should operate in.
+- uint8_t ist               // Interrupt stack table.
+- uint8_t attr              // Flags.
+- uint16_t isr_mid          // Middle bits of the ISR.
+- uint32_t isr_high         // High bits of the ISR.
+- uint32_t reserved         // Reserved by CPU manufacturer (DO NOT USE).
 
+MAKE SURE IT IS PACKED WITH __attribute__((packed))
 
-Make sure the struct is packed with
-__attribute__((packed))
+Now we will need to create the IDTR which will tell
+the CPU where the IDT is loaded in memory.
 
-Now we need the IDTR which will tell the CPU about the IDT.
-So create a struct called idtr_t.
+It will have the following:
+
+- uint16_t limit
+- uint64_t base
 
 MAKE SURE IT IS PACKED
 
-it will contain:
 
-- unsigned short limit
-- uint64_t base
+When the interrupt occurs an interrupt frame will be pushed
+to the stack which will give us some information about
+the current register space states.
 
-Now, when the interrupt fires, an interrupt frame will be setup
-to give information about the current CPU state during the interrupt.
-Why is this important? Because we have to create an interrupt frame struct.
-The struct will be packed and contain the following:
+We need to make the interrupt frame.
+So, create a packed struct with the following entries:
 
-- uint64_t rip          // Instruction pointer.
-- uint64_t cs           // Current code segment.
-- uint64_t rflags       // used to indicate the status of the computations and to control the CPU operations.
-- uint64_t rsp          // Top of stack.
-- uint64_t ss           // Stack segment.
+- uint64_t rip       // Instruction pointer.
+- uint64_t cs        // Code segment.
+- uint64_t rflags    // To be honest, I am not quite sure what this is.
+- uint64_t rsp       // Stack pointer (points to the top of the stack).
+- uint64_t ss        // Stack segment (points to the segment that contains the stack).
 
 
-Now create two function declarations like this:
+Now we need to create two function declarations:
 
 void set_idt_entry(unsigned char entry, void* isr, unsigned char flags);
 void idt_install()
 
-Now we will do IDT.c
-
-
-At the top of the file in IDT.c
-create two static definitions (static meaning it is only visible in the currentl translation unit).
-
-One will be the actual IDT (just an array of 256 idt descriptor structs).
-The other will be the idtr.
-
-Copy the set_idt_entry declaration and put it in the c file and we will
-create a body for it.
-
-This is what it will do:
+Now, inside IDT.c we will define these functions.
 
 void set_idt_entry(unsigned char entry, void* isr, unsigned char flags) {
-    uint64_t addr = (uint64_t)isr;
-    idt[entry].isr_addr_low = addr & 0xFFFF;                         // Grabs the low bits.
-    idt[entry].isr_addr_middle = (addr & 0xFFFF0000) >> 16;          // Grabs the middle bits.
-    idt[entry].isr_addr_high = (addr & 0xFFFFFFFF00000000) >> 32;    // Grabs the higher bits.
-    idt[entry].dpl = 0;                                              // Ring 0 for now, we may have to change this later.
-    idt[entry].p = 1;                                                // It is present.
-    idt[entry].attr = flags;                                        
-    idt[entry].selector = 0x08;
-    idt[entry].reserved = 0x0;
-    idt[entry].reserved2 = 0x0;
+    uint64_t addr = (uint64_t)isr;          // Gets the address of the ISR.
+    idt[entry].isr_low = addr & 0xFFFF;     // Grabs the lower bits.
+    idt[entry].isr_high = (addr >> 32) & 0xFFFFFFFF;        // Grabs the high bits.
+    idt[entry].isr_mid = (addr >> 16) & 0xFFFF;             // Grabs the middle bits.
+    idt[entry].selector = 0x08;                             // We may need to change this as we will create usermode.
+    idt[entry].reserved = 0x0;                              // Just set to zero.
+    idt[entry].attr = flags;                        
+    idt[entry].ist = 0;                                     // Set to zero as well.
 }
 
 
-Now copy the idt_install declaration and add a body which will go like this:
-
 void idt_install() {
-    // The static idtr instance you made and IDT is the static array of idt_descriptors.
-    idtr.limit = (unsigned char)(sizeof(idt)); 
-    idtr.base = (uint64_t)&idt;
-    __asm__ __volatile__("lidt %0" : : "memory" (idtr));        // Loads IDTR.
+    idtr.limit = (uint16_t)sizeof(idt_desc_t) * 255;  // Sets the limit to the size of idt_desc_t * (256 - 1)
+    idtr.base = (uint64_t)&idt[0];                    // Gets the base. 
+    __asm__ __volatile__("lidt %0" : : "memory" (idtr));
 }
