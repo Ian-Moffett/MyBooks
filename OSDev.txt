@@ -846,3 +846,100 @@ void clearScreen(canvas_t* canvas, unsigned int color) {
 
 
 Feel free to use it when you need to!
+
+
+
+----------  Interrupt Descriptor Table (IDT)  ----------
+
+Create 2 files with the path:
+
+kernel/src/interrupts/IDT.h
+kernel/src/interrupts/impl/IDT.c
+
+in IDT.h you need to do the following:
+
+include stdint.h and create an IDT descriptor.
+A IDT descriptor describes an interrupt.
+
+Inside your IDT descriptor struct it will have
+the following:
+
+- uint16_t isr_addr_low
+- uint16_t selector             // Will be used to determain what segment to switch to during interrupt.
+- uint8_t ist : 3
+- uint8_t reserved : 5
+- uint8_t attr : 4
+- uint8_t zero1 : 1
+- uint8_t dpl : 2           // Descriptor privellege level.
+- uint8_t p : 1             // Present.
+- uint16_t isr_addr_middle
+- uint32_t isr_addr_high
+- uint32_t reserved2
+
+
+Make sure the struct is packed with
+__attribute__((packed))
+
+Now we need the IDTR which will tell the CPU about the IDT.
+So create a struct called idtr_t.
+
+MAKE SURE IT IS PACKED
+
+it will contain:
+
+- unsigned short limit
+- uint64_t base
+
+Now, when the interrupt fires, an interrupt frame will be setup
+to give information about the current CPU state during the interrupt.
+Why is this important? Because we have to create an interrupt frame struct.
+The struct will be packed and contain the following:
+
+- uint64_t rip          // Instruction pointer.
+- uint64_t cs           // Current code segment.
+- uint64_t rflags       // used to indicate the status of the computations and to control the CPU operations.
+- uint64_t rsp          // Top of stack.
+- uint64_t ss           // Stack segment.
+
+
+Now create two function declarations like this:
+
+void set_idt_entry(unsigned char entry, void* isr, unsigned char flags);
+void idt_install()
+
+Now we will do IDT.c
+
+
+At the top of the file in IDT.c
+create two static definitions (static meaning it is only visible in the currentl translation unit).
+
+One will be the actual IDT (just an array of 256 idt descriptor structs).
+The other will be the idtr.
+
+Copy the set_idt_entry declaration and put it in the c file and we will
+create a body for it.
+
+This is what it will do:
+
+void set_idt_entry(unsigned char entry, void* isr, unsigned char flags) {
+    uint64_t addr = (uint64_t)isr;
+    idt[entry].isr_addr_low = addr & 0xFFFF;                         // Grabs the low bits.
+    idt[entry].isr_addr_middle = (addr & 0xFFFF0000) >> 16;          // Grabs the middle bits.
+    idt[entry].isr_addr_high = (addr & 0xFFFFFFFF00000000) >> 32;    // Grabs the higher bits.
+    idt[entry].dpl = 0;                                              // Ring 0 for now, we may have to change this later.
+    idt[entry].p = 1;                                                // It is present.
+    idt[entry].attr = flags;                                        
+    idt[entry].selector = 0x08;
+    idt[entry].reserved = 0x0;
+    idt[entry].reserved2 = 0x0;
+}
+
+
+Now copy the idt_install declaration and add a body which will go like this:
+
+void idt_install() {
+    // The static idtr instance you made and IDT is the static array of idt_descriptors.
+    idtr.limit = (unsigned char)(sizeof(idt)); 
+    idtr.base = (uint64_t)&idt;
+    __asm__ __volatile__("lidt %0" : : "memory" (idtr));        // Loads IDTR.
+}
