@@ -3,7 +3,7 @@
 
 You can find the template for the project here:
 
-https://github.com/Ian-Moffett/HSCorpOS/tree/template
+https://github.com/Ian-Moffett/UEFIOSDevTemplate
 
 
 You will need to install qemu which is a 
@@ -975,3 +975,181 @@ then you may have did something wrong.
 
 If you cannot figure it out, put an issue on
 my GitHub and I will happily help you.
+
+
+
+----------  Programmable Interrupt Chip (PIC)  ----------
+
+
+First create a file with the path:
+
+kernel/src/drivers/IO.h
+
+And put the following code in:
+
+#include <stdint.h>
+
+void outportb(uint16_t port, uint8_t value);
+uint8_t inportb(uint16_t port);
+void io_wait();
+
+
+Now create a file with the path kernel/src/drivers/impl/IO.c
+
+And put the following code in it:
+
+#include "../IO.h"
+
+unsigned char inportb(unsigned short port) {
+    unsigned char result;
+    __asm__("in %%dx, %%al" : "=a" (result) : "d" (port));
+    return result;
+ }
+
+
+void outportb(unsigned short port, unsigned char data) {
+    __asm__("out %%al, %%dx" : :"a" (data), "d" (port));
+}
+
+void io_wait() {
+    __asm__ __volatile__("outb %%al, $0x80" : : "a"(0));
+}
+
+
+You do not need to worry about this code.
+
+Now edit a file with the path:
+
+kernel/src/drivers/PIC.h
+
+Now in your PIC.h file you need to make the following
+macros:
+
+#define PIC1_COMMAND 0x20       // Master chip.
+#define PIC1_DATA 0x21          // Data line.
+#define PIC2_COMMAND 0xA0       // Slave chip.
+#define PIC2_DATA 0xA1          // Data line.
+
+#define ICW1_INIT 0x10
+#define ICW1_ICW4 0x01
+#define ICW4_8086 0x01
+#define PIC_EOI 0x20
+
+Also include IO.h
+
+
+Now edit kernel/src/interrupts/IDT.h
+
+Now, include kernel/src/drivers/PIC.h
+
+Now edit kernel/src/interrupts/impl/IDT.c
+
+You are going to add some things above everything in 
+idt_install()
+
+First, we need to save the bitmask of the 
+slave and master chip.
+
+A bitmask is basically just some bits that control
+if certain interrupts will be sent to the CPU
+or not.
+
+So do:
+
+uint8_t master_bm, slave_bm
+master_bm = inportb(PIC1_DATA);
+io_wait();                          // To wait for PIC to catch up.
+slave_bm = inportb(PIC2_DATA);
+io_wait();
+
+Now we need initalize the master PIC chip so 
+do:
+
+outportb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
+io_wait();
+
+Now initalize the slave PIC chip so we do:
+
+outportb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+io_wait();
+
+Now we tell PIC their interrupt offsets to avoid
+collisions with exception offsets due to a design flaw
+with IBM or something.
+
+Do:
+
+outportb(PIC1_DATA, 0x20);
+io_wait();
+outportb(PIC2_DATA, 0x28);
+io_wait();
+
+We we have to tell the two PIC chips about
+each others existance.
+
+outportb(PIC1_DATA, 4);
+io_wait();
+outportb(PIC2_DATA, 2);
+io_wait();
+
+We will also have to make them operate in 
+8086 mode.
+
+outportb(PIC1_DATA, ICW4_8086);
+io_wait();
+outportb(PIC2_DATA, ICW4_8086);
+io_wait();
+
+Now restore the bitmask:
+
+outportb(PIC1_DATA, master_bm);
+io_wait();
+outportb(PIC2_DATA, slave_bm);
+
+Now just to make sure nothing weird happens we can 
+also mask everything:
+
+outportb(PIC1_DATA, 0xFF);
+
+Last thing. Add this declaration to 
+kernel/src/drivers/PIC.h
+
+void PIC_sendEOI(unsigned char irq);
+
+Create PIC.c
+And add this body to kernel/src/drivers/impl/PIC.c
+
+void PIC_sendEOI(unsigned char irq) {
+	if(irq >= 8) {
+		outb(PIC2_COMMAND, PIC_EOI);
+    }
+ 
+	outb(PIC1_COMMAND,PIC_EOI);
+}
+
+    
+----------  Keyboard Driver  ----------
+
+A driver is a program that tells 
+computer hardware how to function.
+
+Create a file with the path:
+
+kernel/src/drivers/keyboard.h
+
+
+In there you will declare an ISR like so:
+
+You also wanna include IDT.h
+
+__attribute__((interrupt)) kb_isr(int_frame_t*);
+
+Now edit a file with the path:
+
+kernel/src/drivers/impl/keyboard.c
+
+And do:
+
+__attribute__((interrupt)) kb_isr(int_frame_t*) {
+        // Try printing to the screen when a key is pressed!
+}
