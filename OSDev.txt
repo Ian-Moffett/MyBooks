@@ -9,6 +9,9 @@ https://github.com/Ian-Moffett/HSCorpOS/tree/template
 You will need to install qemu which is a 
 virtual machine program to run your OS.
 
+If you ever need help just put an issue on
+the github for the book.
+
 
 ----------   Hello, World!   ----------
 
@@ -595,6 +598,8 @@ memoryInfo.h
 
 and doing <your print function>((<name of your const char* array>)[desc->type]);
 
+Also make sure at the end of _start 
+which is the kernel entry to have a __asm__ __volatile__("cli; hlt");
 
 
 ----------  Global Descriptor Table (GDT)  ----------
@@ -930,3 +935,43 @@ void idt_install() {
     idtr.base = (uint64_t)&idt[0];                    // Gets the base. 
     __asm__ __volatile__("lidt %0" : : "memory" (idtr));
 }
+
+
+Now, inside the folder where you put the IDT.h
+create a file called ISR.h
+
+It will have declarations of interrupt service routines
+that will be called by the CPU when an interrupt
+occurrs.
+
+Create a function declaration like this:
+
+__attribute__((interrupt)) div0_handler(int_frame_t*);
+
+
+Now create an ISR.c in the impl folder.
+
+
+Copy the declaration and add a body (keep the attribute).
+
+CHALLANGE:
+Try writing it to clear the screen and displaying an error message.
+
+Now inside kernel/src/kernel.c under where you loaded the GDT
+put:
+
+set_idt_entry(0x0, div0_handler, TRAP_GATE_FLAGS);
+And then under that call idt_install()
+
+
+Now at the bottom of your file (before the halt of course).
+
+Try doing this:
+
+if (0 / 0 == 1) {}
+
+It should raise an exception, if it doesn't 
+then you may have did something wrong.
+
+If you cannot figure it out, put an issue on
+my GitHub and I will happily help you.
