@@ -1153,3 +1153,6 @@ And do:
 __attribute__((interrupt)) kb_isr(int_frame_t*) {
         // Try printing to the screen when a key is pressed!
 }
+
+MAKE SURE THE LAST THING IN THE KB_ISR IS 
+PIC_sendEOI(1);             // One passed in to clear for IRQ line 1.
