@@ -1294,10 +1294,13 @@ Now, back in kernel/src/drivers/impl/mouse.c
 
 
 Make sure to create another
-function and to have a global variable called
-cycle, and another global variable which will be an array
+function called handle_mouse() and to have a global uint8_t 
+variable called cycle that equals to 0, and another 
+global variable which will be an array
 of 4 uint8_t's called packet and one more global variable
 called packetReady which equals to false.
+
+MAKE SURE TO INCLUDE stdbool.h in mouse.h
 
 It will take a uint8_t as an argument called byte and
 return void.
@@ -1312,7 +1315,7 @@ switch (cycle) {
             // Inside this byte is always 1 to check if packet
             // became out of sync.
  
-        if (!(byte & (1 << 3))) {
+        if (byte & 0b00001000 == 0) {
             break;
         }
 
@@ -1333,7 +1336,7 @@ switch (cycle) {
             break;
         }
 
-        packet[2] = data;
+        packet[2] = byte;
         packetReady = true;
         cycle = 0;
         break;
@@ -1341,7 +1344,9 @@ switch (cycle) {
 
 
 Now, in mouse.h create a declaration called
-eval_mouse_packet(uint8_t* packet);
+eval_mouse_packet(canvas_t* canvas);
+
+MAKE SURE TO INCLUDE FrameBuffer.h IN mouse.c
 
 We will define that in mouse.c like this:
 
@@ -1368,35 +1373,6 @@ Now, in mouse.c we must check the values in our packet.
 
 include stdbool.h in mouse.h
 
-Inside eval_mouse_packet() create some bools like this:
-
-bool xNeg, yNeg, xOverflow, yOverflow;
-
-if (packet[0] & PS2XSign) {
-    xNeg = true;
-} else {
-    xNeg = false;
-}
-
-if (packet[0] & PS2YSign) {
-    yNeg = true;
-} else {
-    yNeg = false;
-}
-
-if (packet[0] & PS2XOverflow) {
-    xOverflow = true;
-} else {
-    xOverflow = false;
-}
-
-if (packet[0] & PS2YOverflow) {
-    yOverflow = true;
-} else {
-    yOverflow = false;
-}
-
-
 At the top of mouse.h you wanna define this:
 
 typedef struct {
@@ -1412,51 +1388,87 @@ called mousepos;
 
 Now continue writing eval_mouse_packet()
 
-So check this:
+Make it like this:
 
-if (!(xNeg)) {
-    mousepos.x += packet[1];
+static void eval_mouse_packet(canvas_t* canvas) {
+    if (!(packetReady)) {
+        return;
+    }
 
-    if (xOverflow) {
-        mousepos.x += 255;
+    bool xNeg, yNeg, xOverflow, yOverflow;
+
+    if (packet[0] & PS2XSign) {
+        xNeg = true;
+    } else {
+        xNeg = false;
     }
-} else {
-    pakcet[1] = 256 - packet[1];
-    mousepos.x -= packet[1];
-    if (xOverflow) {
-        mousepos.x -= 255;
+
+    if (packet[0] & PS2YSign) {
+        yNeg = true;
+    } else {
+        yNeg = false;
     }
+
+    if (packet[0] & PS2XOverflow) {
+        xOverflow = true;
+    } else {
+        xOverflow = false;
+    }
+
+    if (packet[0] & PS2YOverflow) {
+        yOverflow = true;
+    } else {
+        yOverflow = false;
+    }
+
+    if (!(xNeg)) {
+        mousepos.x += packet[1];
+
+        if (xOverflow) {
+            mousepos.x += 255;
+        }
+
+    } else {
+        packet[1] = 256 - packet[1];
+        mousepos.x -= packet[1];
+        if (xOverflow) {
+            mousepos.x -= 255;
+        }
+    }
+
+
+    if (!(yNeg)) {
+        mousepos.y -= packet[2];
+
+        if (yOverflow) {
+            mousepos.y -= 255;
+        }
+    } else {
+        packet[2] = 256 - packet[2];
+        mousepos.y += packet[2];
+        if (yOverflow) {
+            mousepos.y += 255;
+        }
+    }
+
+    if (mousepos.x < 0) {
+        mousepos.x = 0;
+    }
+
+    if (mousepos.x > canvas->lfb->width - 8) {
+        mousepos.x = canvas->lfb->width - 8;
+    }
+
+    if (mousepos.y < 0) {
+        mousepos.y = 0;
+    }
+
+    if (mousepos.y > canvas->lfb->height - 16) {
+        mousepos.y = canvas->lfb->height -16;
+    }
+
+    packetReady = false;
+    putChar(canvas->lfb, canvas->font, 0xFFFFFFFF, 'O', mousepos.x, mousepos.y);
 }
 
-
-if (!(yNeg)) {
-    mousepos.y -= packet[1];
-
-    if (yOverflow) {
-        mousepos.y -= 255;
-    }
-} else {
-    packet[2] = 256 - packet[2];
-    mousepos.y += packet[1];
-    if (yOverflow) {
-        mousepos.y += 255;
-    }
-}
-
-if (mousepos.x <= 0) {
-    mousepos.x = 0;
-} else if (mousepos.x >= canvas->lfb->width) {
-    mousepos.x = canvas->lfb->width;
-}
-
-if (mousepos.y <= 0) {
-    mousepos.y = 0;
-} else if (mousepos.y >= canvas->lfb->height) {
-    mousepos.y = canvas->lfb->height;
-}
-
-cavnas->prevX = mousepos.x;
-canvas->x = mousepos.x;
-canvas->y = mousepos.y;
-kwrite(canvas, "+", 0xFFFFFFFF);
 
