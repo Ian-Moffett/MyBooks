@@ -599,7 +599,11 @@ memoryInfo.h
 and doing <your print function>((<name of your const char* array>)[desc->type]);
 
 Also make sure at the end of _start 
-which is the kernel entry to have a __asm__ __volatile__("cli; hlt");
+which is the kernel entry to have a 
+
+while (1) {
+    __asm__ __volatile__("hlt");
+}
 
 
 ----------  Global Descriptor Table (GDT)  ----------
@@ -1177,8 +1181,7 @@ controller.
 We need to enable the enable the mouse on that port.
 
 Create a function declaration called mouse_init()
-and another one called mouse_wait() and one more
-called mouse_read().
+and one more called: 
 
 We need to wait for the second bit of 0x64 to be clear to
 send more bytes to mouse.
@@ -1187,6 +1190,9 @@ Create a file with the path :
 
 kernel/src/drivers/impl/mouse.c
 
+We have to wait for bit 2 of port 0x64 to become 
+clear to send bytes to mouse so.
+Create a static function called mouse_wait().
 Now in mouse_wait() it will do the following:
 
 Create a variable called timeout with type
@@ -1208,19 +1214,249 @@ which will do:
 
 uint64_t timeout = 100000;
 while (timeout--) {
-    if (inportb(0x64) & 0) {
+    if (inportb(0x64) & 0b1) {
         return;
     }
 }
 
 
+Create a static function called mouse_read()
+that returns uint8_t
 Now in mouse_read() it will do:
 
 mouse_wait_inp();
 return inportb(0x60);
 
+Now create a static function called mouse_write(uint8_t byte).
+
+It will do:
+
+mouse_wait();
+outportb(0x64, 0xD4);       // Command byte.
+mouse_wait();
+outportb(0x60, byte).
+
 Now in mouse_init();
 
 It will do the following:
 
+outportb(0x64, 0xA8);  // Enabling auxiliary device.
+mouse_wait();
+outportb(0x64, 0x20);       // Tells keyboard controller that command is incoming.
+mouse_wait_inp();
+uint8_t s = inportb(0x60);
+s |= 0b10;
+mouse_wait();
+outportb(0x64, 0x60);
+mouse_wait();
+outportb(0x60, s);      // Compaq status byte.
+
+We want to tell the mouse to use default settings, 
+so we do the following:
+
+mouse_write(0xF6);
+mouse_read();           // ACK.
+mouse_write(0xF4);      // Enable mouse.
+mouse_read();           // ACK.
+
+
+You also want to make a handler at the top of the file like so:
+
+__attribute__((interrupt)) void mouse_isr(int_frame_t*) {
+    // Code.
+}
+
+Now what you want to do is in:
+kernel/src/kernel.c
+
+Add a IDT descriptor for mouse interrupt
+the index is 0x2C and put the handler you made in mouse.c
+
+You also wanna include drivers/mouse.h
+
+And execute mouse_init() at bottom.
+
+Also execute under mouse_init call the following:
+
+And I do not know if I told you but before the while loop where it
+constantly executes 'hlt'
+
+Make sure you have:
+
+__asm__ __volatile__("sti");
+
+outportb(PIC1_DATA, 0x0);
+outportb(PIC1_DATA, inportb(PIC1_DATA) | 0x1);
+outportb(PIC2_DATA, 0x0);
+
+
+Now, back in kernel/src/drivers/impl/mouse.c
+
+
+Make sure to create another
+function and to have a global variable called
+cycle, and another global variable which will be an array
+of 4 uint8_t's called packet and one more global variable
+called packetReady which equals to false.
+
+It will take a uint8_t as an argument called byte and
+return void.
+
+Now you want to do:
+
+switch (cycle) {
+    case 0:
+        if (packetReady) {
+            break;
+        }
+            // Inside this byte is always 1 to check if packet
+            // became out of sync.
+ 
+        if (!(byte & (1 << 3))) {
+            break;
+        }
+
+
+        packet[0] = byte;
+        ++cycle;
+        break;
+    case 1:
+        if (packetReady) {
+            break;
+        }
+
+        packet[1] = byte;
+        ++cycle;
+        break;
+    case 2:
+        if (packetReady) {
+            break;
+        }
+
+        packet[2] = data;
+        packetReady = true;
+        cycle = 0;
+        break;
+}
+
+
+Now, in mouse.h create a declaration called
+eval_mouse_packet(uint8_t* packet);
+
+We will define that in mouse.c like this:
+
+
+eval_mouse_packet(canvas_t* canvas) {
+    if (!(packetReady)) {
+        return;
+    }
+    
+    packetReady = true;
+}
+
+In mouse.h we need to make some macros like this:
+
+#define PS2XSign        0b00010000     // So we can get X signed bit.
+#define PS2YSign        0b00100000
+#define PS2XOverflow    0b01000000
+#define PS2YOverflow    0b10000000
+#define PS2LButton      0b00000001
+#define PS2MButton      0b00000010
+#define PS2RButton      0b00000100
+
+Now, in mouse.c we must check the values in our packet.
+
+include stdbool.h in mouse.h
+
+Inside eval_mouse_packet() create some bools like this:
+
+bool xNeg, yNeg, xOverflow, yOverflow;
+
+if (packet[0] & PS2XSign) {
+    xNeg = true;
+} else {
+    xNeg = false;
+}
+
+if (packet[0] & PS2YSign) {
+    yNeg = true;
+} else {
+    yNeg = false;
+}
+
+if (packet[0] & PS2XOverflow) {
+    xOverflow = true;
+} else {
+    xOverflow = false;
+}
+
+if (packet[0] & PS2YOverflow) {
+    yOverflow = true;
+} else {
+    yOverflow = false;
+}
+
+
+At the top of mouse.h you wanna define this:
+
+typedef struct {
+    long x;
+    long y;
+} point_t;
+
+You may also want to include Framebuffer.h
+if it isn't already included in mouse.h
+
+Now in mouse.c create a point_t instance
+called mousepos;
+
+Now continue writing eval_mouse_packet()
+
+So check this:
+
+if (!(xNeg)) {
+    mousepos.x += packet[1];
+
+    if (xOverflow) {
+        mousepos.x += 255;
+    }
+} else {
+    pakcet[1] = 256 - packet[1];
+    mousepos.x -= packet[1];
+    if (xOverflow) {
+        mousepos.x -= 255;
+    }
+}
+
+
+if (!(yNeg)) {
+    mousepos.y -= packet[1];
+
+    if (yOverflow) {
+        mousepos.y -= 255;
+    }
+} else {
+    packet[2] = 256 - packet[2];
+    mousepos.y += packet[1];
+    if (yOverflow) {
+        mousepos.y += 255;
+    }
+}
+
+if (mousepos.x <= 0) {
+    mousepos.x = 0;
+} else if (mousepos.x >= canvas->lfb->width) {
+    mousepos.x = canvas->lfb->width;
+}
+
+if (mousepos.y <= 0) {
+    mousepos.y = 0;
+} else if (mousepos.y >= canvas->lfb->height) {
+    mousepos.y = canvas->lfb->height;
+}
+
+cavnas->prevX = mousepos.x;
+canvas->x = mousepos.x;
+canvas->y = mousepos.y;
+kwrite(canvas, "+", 0xFFFFFFFF);
 
