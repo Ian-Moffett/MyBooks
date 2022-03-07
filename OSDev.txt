@@ -1156,3 +1156,71 @@ __attribute__((interrupt)) kb_isr(int_frame_t*) {
 
 MAKE SURE THE LAST THING IN THE KB_ISR IS 
 PIC_sendEOI(1);             // One passed in to clear for IRQ line 1.
+
+
+
+
+----------   Mouse   ----------
+
+Lets get the mouse working!
+
+
+Create a file with the path:
+
+kernel/src/drivers/mouse.h
+
+First, include IO.h and stdint.h
+
+The mouse is on the auxillary port on the keyboard
+controller.
+
+We need to enable the enable the mouse on that port.
+
+Create a function declaration called mouse_init()
+and another one called mouse_wait() and one more
+called mouse_read().
+
+We need to wait for the second bit of 0x64 to be clear to
+send more bytes to mouse.
+
+Create a file with the path :
+
+kernel/src/drivers/impl/mouse.c
+
+Now in mouse_wait() it will do the following:
+
+Create a variable called timeout with type
+uint64_t that is set to 100000.
+
+Now do: 
+
+while (timeout--);
+
+And inside while loop do the following:
+
+if (!(inportb(0x64) & 1)) {
+    return;
+}
+
+Create a static function called mouse_wait_inp()
+
+which will do:
+
+uint64_t timeout = 100000;
+while (timeout--) {
+    if (inportb(0x64) & 0) {
+        return;
+    }
+}
+
+
+Now in mouse_read() it will do:
+
+mouse_wait_inp();
+return inportb(0x60);
+
+Now in mouse_init();
+
+It will do the following:
+
+
