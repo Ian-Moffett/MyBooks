@@ -34,7 +34,7 @@ This function takes 2 parameters:
 
 Inside the main function you should
 initalize the library by calling 
-InitalizeLib and passing imageHandle and systemTable.
+InitializeLib() and passing imageHandle and systemTable.
 
 
 Use the Print function like so:
@@ -208,6 +208,9 @@ int memcmp(const void* aptr, const void* bptr, size_t n) {
 	return 0;
 }
 
+
+INCLUDE stddef.h
+
 Now we will need to verify the ELF header by doing.
 
 if (memcmp(&header.e_ident[EI_MAG0], ELFMAG, SELFMAG) != 0 ||
@@ -235,7 +238,7 @@ time we call Read()
 
 Now create a variable of type UINTN which will be 
 called progheadersize which will be equal to 
-header.phnum * header.e_phentsize.
+header.e_phnum * header.e_phentsize.
 
 We need to allocate some memory for the program headers.
 
@@ -245,11 +248,11 @@ sysTable->BootServices->AllocatePool(EfiLoaderData, progheadersize, (void**)&pro
 
 Now we will read it info memory.
 
-kernel->Read(kernel, &size, programheaders);
+kernel->Read(kernel, &progheadersize, programheaders);
 
 Now do this:
 
-for (Elf64_Phdr* phdr = phdrs; (char*)phdr < (char*)phdrs + header.e_phnum * header.e_phentsize; phdr = (Elf64_Phdr*)((char*)phdr + header.e_phentsize)) {
+for (Elf64_Phdr* phdr = phdrs; (char*)phdr < (char*)phdrs + header.e_phnum * header.e_phentsize; phdr = (Elf64_Phdr*)((char*)phdr + header.e_phentsize)) { 
     // Continue in here.
 }
 
@@ -330,6 +333,10 @@ typedef struct {
 } framebuffer_t;
 
 
+If I were you, I would probably grab the struct
+from kernel/src/drivers/FrameBuffer.h
+
+
 Now inside your function that prepares GOP create a pointer instance
 of the framebuffer_t struct. 
 
@@ -358,8 +365,10 @@ mkdir kernel/drivers kernel/drivers/impl
 Now you want to edit kernel/drivers/FrameBuffer.h
 
 
-And you want to paste that framebuffer_t struct that you had in the bootloader.
+(NOT  NEEDED).
+And you want to paste that framebuffer_t struct that you had in the bootloader.   
 
+(NEEDED)
 Now include FrameBuffer.h in kernel/src/kernel.c
 
 And make sure _start takes a pointer to framebuffer_t*.
@@ -399,7 +408,7 @@ Now we need to create a function that loads the font.
 
 The function goes like this:
 
-psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
+psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HAANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
     EFI_FILE* font = loadFile(dir, path, imageHandle, systable);
 
     if (!(font)) {
@@ -449,10 +458,8 @@ take a psf1_font_t* argument as the font.
 Of course you ware going to have to copy the font stuff over 
 to the LFB driver in the kernel.
 
-
 Now you can write a putstring function with
 the helper putchar function.
-
 
 
 
@@ -472,16 +479,13 @@ In efi_main create a variable
 of type EFI_MEMORY_DESCRIPTOR*
 and is assigned to NULL which will be our map.
 
+EFI_MEMORY_DESCRIPTOR describes a memory segment.
+
 And three with UINTN which will be our
 mapSize mapKey and descriptorSize.
 
 Also create a variable of type UINT32 called
 descriptorVersion (don't worry about this).
-
-EFI_MEMORY_DESCRIPTOR descriptor is just points to a 
-struct that gives information like
-the number of pages of the memory segment,
-the physical address of the section and type.
 
 
 mapSize is just the size of the map.
@@ -618,16 +622,16 @@ called GDT.h
 You will need to includ stdint.h
 
 
-Create a packed struct called gdt_descriptor_t.
+Create a packed struct called gdtr_t.
 You can pack it like this:
 
 typedef struct {
-} __attribute__((packed)) gdt_descriptor_t;
+} __attribute__((packed)) gdtr_t;
 
-The GDT descriptor tells the CPU where the GDT is 
+The GDTR tells the CPU where the GDT is 
 and how big it is.
 
-Inside gdt_descriptor_t you will need the following:
+Inside gdr_t you will need the following:
 
 - uint16_t size
 - uint64_t offset
@@ -643,7 +647,6 @@ That will have the following:
 - uint8_t access_byte    // Describes the memory segment.
 - uint8_t limit1
 - uint8_t flags
-- uint8_t base2
 
 Now, we need to create the actual GDT.
 
@@ -654,7 +657,6 @@ It will have the following:
 - gdt_entry_t null
 - gdt_entry_t kernelcode
 - gdt_entry_t kerneldata
-- gdt_entry_t usernull
 - gdt_entry_t usercode
 - gdt_entry_t userdata
 
@@ -665,12 +667,10 @@ Make sure it also has the packed attribute.
 Now do: 
 
 extern gdt_t gdt.
-void load_gdt(gdt_descriptor_t* desc);
+void load_gdt(gdtr_t* desc);
 
 Now create a file with the path:
 kernel/src/memory/impl/GDT.c
-Uh oh, scary line number. ✞ (don't worry about this lol) 
-
 
 
 Create a multiarray with __attribute__((aligned(0x1000)))
@@ -678,15 +678,15 @@ of type gdt_t called gdt like this:
 
 
 __attribute__((aligned(0x1000))) gdt_t gdt = {
-    {0, 0, 0, 0x00, 0x00, 0},  // Null descriptor.
-    {0, 0, 0, 0x9A, 0xA0, 0},  // Kernel code.
-    {0, 0, 0, 0x92, 0xA0, 0},  // Kernel data.
-    {0, 0, 0, 0x00, 0x00, 0},  // User null.
-    {0, 0, 0, 0x9A, 0xA0, 0},  // User code.
-    {0, 0, 0, 0x92, 0xA0, 0}   // User data.
+    {0, 0, 0, 0x00, 0x00},  // Null descriptor.
+    {0, 0, 0, 0x9A, 0xA0},  // Kernel code.
+    {0, 0, 0, 0x92, 0xA0},  // Kernel data.
+    {0, 0, 0, 0x9A, 0xA0},  // User code.
+    {0, 0, 0, 0x92, 0xA0}   // User data.
 };
 
 
+(MAKEFILE CHANGES NOT NEEDED).
 We will need to edit kernel/Makefile
 so open that file up and add a variable called ASMC
 which equals nasm.
@@ -737,7 +737,6 @@ global loadGdt
 bits 64
 
 loadGdt:
-    cli
     lgdt [rdi]
 
 Make sure to put the kernel data selector in AX
@@ -815,7 +814,7 @@ Inside kernel/src/kernel.c
 you need to include kernel/src/memory/GDT.h
 and create a GDT descriptor like this:
 
-static gdt_descriptor_t gdt_desc = {
+static gdtr_t gdtr = {
     .size = sizeof(gdt) - 1,
     .offset = (uint64_t)&gdt
 };
@@ -922,6 +921,14 @@ void idt_install()
 
 Now, inside IDT.c we will define these functions.
 
+Make sure in IDT.c
+
+to have a array of 256 idt_descriptors 
+that is static and global
+
+and a idtr instance that is also static 
+and global.
+
 void set_idt_entry(unsigned char entry, void* isr, unsigned char flags) {
     uint64_t addr = (uint64_t)isr;          // Gets the address of the ISR.
     idt[entry].isr_low = addr & 0xFFFF;     // Grabs the lower bits.
@@ -1004,15 +1011,15 @@ And put the following code in it:
 
 #include "../IO.h"
 
-unsigned char inportb(unsigned short port) {
-    unsigned char result;
-    __asm__("in %%dx, %%al" : "=a" (result) : "d" (port));
+uint8_t inportb(uint16_t port) {
+    uint8_t result;
+    __asm__ __volatile__("in %%dx, %%al" : "=a" (result) : "d" (port));
     return result;
  }
 
 
-void outportb(unsigned short port, unsigned char data) {
-    __asm__("out %%al, %%dx" : :"a" (data), "d" (port));
+void outportb(uint16_t port, uint8_t byte) {
+    __asm__ __volatile__("out %%al, %%dx" : :"a" (data), "d" (port));
 }
 
 void io_wait() {
@@ -1128,7 +1135,7 @@ void PIC_sendEOI(unsigned char irq) {
 		outb(PIC2_COMMAND, PIC_EOI);
     }
  
-	outb(PIC1_COMMAND,PIC_EOI);
+	outb(PIC1_COMMAND, PIC_EOI);
 }
 
     
@@ -1162,7 +1169,304 @@ MAKE SURE THE LAST THING IN THE KB_ISR IS
 PIC_sendEOI(1);             // One passed in to clear for IRQ line 1.
 
 
+----------   PIT timer   ----------
 
+With the PIT timer you can make functions like 
+sleep() which pause execution for a certain amount of time.
+
+The timer runs on a base frequency of 1193182 and that
+is how many times the chip osclilates per second.
+
+Create a file with the path:
+
+kernel/src/drivers/PIT.h
+
+Inside that file make some declarations like this:
+
+void sleep(uint64_t ms);
+void setDivisor(uint16_t divisor);
+void unmask_irq0();
+void pit_init();
+__attribute__((interrupt)) void pit_isr(int_frame_t* frame);
+
+also include IO.h and IDT.h
+
+Now edit kernel/src/drivers/impl/PIT.c
+
+Include PIT.h
+and include stdint.h
+
+Make a global static variable like this:
+
+uint16_t div = 65535;
+
+Now make a global static variable like this:
+
+uint64_t ticks = 0;
+
+We will define setDivisor(uint16_t) like this:
+
+setDivisor(uint16_t divisor) {
+    
+}
+
+Inside the function check if the divisor is less then 100.
+If so then make it 100.
+
+Because if the devisor was less then 100 
+that would be quite stupid.
+
+Now set the global divisor (div) to the local divisor.
+Now send a byte to IO port 0x40 and that byte will be
+a cast to a uint8_t divsor AND by 0x00ff that will set the lower
+bits of the divisor.
+
+Now call io_wait().
+
+Now you need to set the higher bits of the divisor doing this:
+
+outportb(0x40, (uint8_t)((divisor & 0xff00) >> 8));
+
+Now we need to create the function that sleeps so do:
+
+void sleep(uint64_t ms) {
+    uint64_t etick = ticks + (ms / 1000);
+
+    while (ticks < etick);
+}
+
+Now define the interrupt service routine.
+
+__attribute__((interrupt)) void pit_isr(int_frame_t* frame) {
+    ++ticks;
+
+    if (ticks > 1000) {
+        ticks = 0;
+    }
+
+    PIC_sendEOI(0);
+}
+
+
+Now define unmask_irq0();
+
+Which will send to the master PIC's data register (PIC1_DATA)
+a byte and that byte wil contain the current contents of
+the master PIC data register XOR by 0x1.
+
+Why?
+
+That's because it will toggle bit 1 of the PIC bitmask
+which is IRQ0 and allows IRQ0 to be sent to the CPU 
+so it can call pit_isr().
+
+Now pit_init();
+
+void pit_init() {
+    setDivisor(500);
+}
+
+
+Now in kernel.c you need to add an interrupt vector 
+which has the index of 0x20 to pit_isr.
+
+Also call pit_init();
+
+
+----------   Paging   ----------
+
+Paging allows a process to have a full
+address space without needing the full amount
+of RAM.
+
+Edit the file where you header file where
+memory info is and add a function declaration
+that returns uint64_t called getMemSize and 
+takes the following arguments:
+
+- memdesc_t* mMap
+- uint64_t mEntryCount
+- uint64_t mDescSize
+
+Now inside memInfo.c you want to
+paste the declaration and define a body.
+
+Inside create a variable of type uint64_t called
+memorySizeBytes that is assigned to 0.
+
+Now do this:
+
+for (int entry = 0; entry < mEntryCount; ++entry) {
+    memdesc_t* desc = (memdesc_t*)((uint64_t)mMap + (entry * mDescSize));
+    memorySizeBytes += desc->numPages * 4096;
+}
+
+return memorySizeBytes;
+
+
+Now create a file with path:
+kernel/src/drivers/paging.h
+
+And make a struct called bitmap
+which will have the following:
+
+- size_t size
+- uint8_t* buffer
+
+MAKE SURE TO INCLUDE stddef.h and stddint.h
+
+Now create a function declaration called bmpidx that takes
+a uint64_t called index and a bitmap_t pointer 
+called bmp and returns unsigned char.
+
+Now in kernel/src/paging.c
+
+define bmpidx(uint64_t index, bitmap_t* bmp);
+
+which will do:
+
+uint64_t byteIndex = index / 8;
+uint8_t bitIndex = index % 8;
+uint8_t bitIdxer = 0b10000000 >> bitIndex;
+
+if (bmp->buffer[byteIndex] & bitIndex) > 0) {
+    return 1;
+}
+
+return 0;
+
+
+Create a file called paging.h
+
+and now include memoryInfo.h
+
+Now create a function declaration like this:
+
+void readMemMap(memdesc_t* mMap, size_t mMapSize, size_t mDescSize);
+
+Now create a file called paging.c
+
+And make the following global staic variables:
+
+- static uint64_t freeMem
+- static uint64_t reservedMem
+- static uint64_t usedMem
+- static bitmap_t bitmap;
+
+
+Define readMemMap and make it do the following:
+
+static bool init = false;
+
+if (init) {
+    return;
+}
+
+init = true;
+
+uint64_t mMapEntries = mMapSize / mDescSize;
+size_t biggestFreeSegSize = 0;
+void* biggestSeg;
+
+for (int entry = 0; entry < mMapEntries; ++entry) {
+    memdesc_t* desc = (memdesc_t*)((uint64_t)mMap + (entry * mDescSize));
+
+    // Get largest segment.
+    if (desc->type == 7) {  // EfiConventionalMemory.
+        if (desc->numPages * 4096 > biggestFreeSegSize) {
+            biggestFreeSegSize = desc->numPages * 4096;
+            biggestSeg = desc->physAddr;  
+        }
+    }
+
+    uint64_t memSz = getMemSize(mMap, mMapEntries, mDescSize);
+    freeMem = memSz;
+    uint64_t bmpSize = memSz / 4096 / 8 + 1;
+
+    // Get bitmap working.
+    bitmap.size = bmpSize;
+    bitmap.buffer = (uint8_t*)biggestSeg;       // Allocate the largest segment for our bitmap.
+    bitmap.size = bmpSize;
+
+    for (int i = 0; i < bitmap.size; ++i) {
+        *(uint8_t*)(bitmap.buffer + i) = 0x0;
+    }
+
+    // Lock pages of where bitmap is so
+    // we cannot access it when requesting page.
+
+    
+    // WILL BE DEFINED LATER.
+    // ARG1: address of bitmap.
+    // ARG2: How many pages to lock.
+    lockPages(&bitmap, bitmap.size / 4096 + 1);  
+
+    // Reserve pages of unusable memory.
+    
+    for (int i = 0; i < mMapEntries; ++i) {
+        memdesc_t* desc = (memdesc_t*)((uint64_t)mMap + (i * mDescSize));
+
+        if (desc->type != 7) {     // Not EfiConventionalMemory.
+            // WILL BE DEFINED LATER!
+            reservePages(desc->physAddr, desc->numPages);
+        }
+    }
+
+}
+
+Now we have to make two function declarations in 
+paging.h to lock pages so they aren't given when
+pages are requested.
+
+void lockPage(void* addr);
+void lockPages(void* addr, uint64_t nPages);
+void reservePage(void* addr);
+
+Now in paging.c we will define lockPage(void* addr).
+
+So, do this:
+
+void lockPage(void* addr) {
+    uint64_t index = (uint64_t)addr / 4096;
+
+    if (bmpidx(index, &bitmap)) {
+        return;
+    }
+
+    freeMem -= 4096;
+    usedMem += 4096;
+
+    uint64_t byteIdx = index / 8;
+    uint8_t bitIdx = index % 8;
+    uint8_t bitIndexer = 0b10000000 >> bitIdx;
+    bitmap.buffer[byteIdx] ^= bitIndexer;
+}
+
+
+Now do:
+
+void lockPages(void* addr, nPages) {
+    for (int i = 0; i < nPages; ++i) {
+        lockPage((void*)((uint64_t)addr + (i * 4096)));
+    }
+}
+
+Now: 
+
+void reservePage(void* addr) {
+    if (bmpidx(index, &bitmap)) {
+        return;
+    }
+
+    uint64_t idx = (uint64_t)addr / 4096; 
+
+    uint64_t byteIdx = idx / 8;
+    uint8_t bitIdx = idx % 8;
+    uint8_t bitIndexer = 0b10000000 >> bitIdx;
+    bitmap.buffer[byteIdx] |= bitIndexer;
+    freeMem -= 4096;
+    reservedMem += 4096;
+}
 
 ----------   Mouse   ----------
 
