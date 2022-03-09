@@ -1189,6 +1189,9 @@ void unmask_irq0();
 void pit_init();
 __attribute__((interrupt)) void pit_isr(int_frame_t* frame);
 
+Also make a macro called BASE_FREQUENCY
+which is set to 1193180.
+
 also include IO.h and IDT.h
 
 Now edit kernel/src/drivers/impl/PIT.c
@@ -1206,7 +1209,7 @@ uint64_t ticks = 0;
 
 We will define setDivisor(uint16_t) like this:
 
-setDivisor(uint16_t divisor) {
+setDivisor(uint16_t freq) {
     
 }
 
@@ -1216,16 +1219,18 @@ If so then make it 100.
 Because if the devisor was less then 100 
 that would be quite stupid.
 
-Now set the global divisor (div) to the local divisor.
+Now set the global divisor (div) to BASE_FREQUENCY
+divided by local divisor.
+Now send the command byte to port 0x43 (0x36).
 Now send a byte to IO port 0x40 and that byte will be
-a cast to a uint8_t divsor AND by 0x00ff that will set the lower
+a cast to a uint8_t divsor AND by 0xFF that will set the lower
 bits of the divisor.
 
 Now call io_wait().
 
 Now you need to set the higher bits of the divisor doing this:
 
-outportb(0x40, (uint8_t)((divisor & 0xff00) >> 8));
+outportb(0x40, (uint8_t)((div >> 8));
 
 Now we need to create the function that sleeps so do:
 

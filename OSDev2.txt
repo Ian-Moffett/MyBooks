@@ -1,0 +1,610 @@
+----------   Introduction   ----------
+
+
+You can find the template for the project here:
+
+https://github.com/Ian-Moffett/UEFIOSDevTemplate
+
+
+You will need to install qemu which is a
+virtual machine program to run your OS.
+
+If you ever need help just put an issue on
+the github for the book.
+
+
+----------   Hello, World!   ----------
+
+
+OSDEV: welcome to your new journey!
+
+You will need to edit gnu-efi/bootloader/main.c
+
+First include efi.h
+and also include efilib.h and stdint.h
+
+You will need to create an entry point called efi_main
+which will return EFI_STATUS.
+
+This function takes 2 parameters:
+
+- EFI_HANDLE imageHandle
+- EFI_SYSTEM_TABLE* systemTable
+
+
+Inside the main function you should
+initalize the library by calling
+InitializeLib() and passing imageHandle and systemTable.
+
+
+Use the Print function like so:
+Print(L"Any text here\n");
+
+
+And return EFI_SUCESS.
+
+L means long char*.
+
+Now go back to the original folder you were in before and type:
+make
+
+Now, type make nfs,
+press enter.
+
+Congrats! You have done your first Hello World in your OS!
+
+
+----------  Loading your first kernel.   ----------
+
+
+It is time for you to make a kernel!
+You will need to load the elf program header
+of your compiled kernel into memory
+and then jump to it.
+
+How do we do that?
+Well first we must load it into memory lol.
+
+You will want to create a function that can load a file.
+The function will return EFI_FILE* and it will take
+
+- EFI_FILE* directory
+- CHAR16* path
+- EFI_HANDLE imageHandle
+- EFI_SYSTEM_TABLE* sysTable
+
+Now you want to prepare a variable with type:
+EFI_FILE* called fileres.
+
+That will contain the loaded file when we
+finished loading it.
+
+You also want to prepare a variable with type
+EFI_LOADED_IMAGE_PROTOCOL*
+which will hold our loaded image.
+
+
+"But what is a protocol?"
+
+I am glad you asked!
+A protocol serves to enable communication
+between separately built modules like drivers.
+
+You will need to get the filesystem that
+the computer booting from.
+
+Use:
+sysTable->BootServices->HandleProtocol()
+and pass these three things in order:
+
+- imageHandle
+- &gEfiLoadedImageProtocolGuid
+- (void**)&loadedImage.
+
+Now create a variable of type:
+
+EFI_SIMPLE_FILE_SYSTEM_PROTOCOL*
+called filesystem.
+
+Now you need to get the filesystem protocol by calling
+sysTable->BootServices->HandleProtocol()
+and passing the following in order:
+
+- loadedImage->DeviceHandle
+- &gEfiSimpleFileSystemProtocolGuid
+- (void**)&filesystem
+
+Now you want to check if the directory is NULL
+meaning the person who is calling loadFile is
+requesting the root directory.
+
+If it is then set directory to root by calling
+filesystem->OpenVolume(filesystem, &directory)
+
+Don't worry if it is getting too complicated,
+I'll explain other functions better.
+
+Now you need to get the status by storing the result
+of directory->Open(directory, &fileres, path, EFI_FILE_MODE_READ,
+    EFI_FILE_READ_ONLY);
+
+inside a variable of type EFI_STATUS
+
+check if status doesn't equal EFI_SUCESS.
+If it doesn't then return NULL.
+
+Now return fileres.
+
+
+Now in our main function we need to check if the result of loadFile
+(the function we created earlier does not return NULL.
+
+Create a variable of type EFI_FILE* (I will refer to this variable as kernel).
+which will be set to loadFile(NULL, L"kernel.elf", imageHandle, sysTable).
+
+If it doens't return NULL then we can continue.
+
+Now we need to get some information about the kernel ELF
+by loading it's ELF header.
+
+You will need to include elf.h
+
+Now define a variable of type Elf64_Ehdr
+which will be our headers.
+
+Define these variables of these types.
+
+- UINTN (this will the size of the file info)[fileInfoSize]
+- EFI_FILE_INFO* (this will be the file info)[fileInfo].
+
+If you wanna know what those square brackets are next to
+the descriptions of the types I wrote, that's just what
+I will be refering the variables as.
+
+
+
+Now to get the information.
+
+
+Call kernel->GetInfo() to get fileinfo size.
+
+and pass the following:
+
+- kernel
+- &gEfiFileInfoGuid
+- &fileinfoSize
+- NULL
+
+Now, we are going to have to allocate some memory for
+the file info.
+
+You can do that by using:
+
+sysTable->BootServices->AllocatePool()
+
+and passing the following:
+
+- EfiLoaderData (don't worry about this).
+- fileInfoSize
+- (void**)&fileInfo
+
+Now get the size with sizeof(header) and store it in
+a varible of type UINTN  [size].
+
+Now read the file info into header with
+
+kernel->Read(kernel, &size, &header).
+
+
+You will need to paste this helper function somewhere above this function.
+
+
+int memcmp(const void* aptr, const void* bptr, size_t n) {
+	const unsigned char* a = aptr, *b = bptr;
+	for (size_t i = 0; i < n; i++) {
+		if (a[i] < b[i]) return -1;
+		else if (a[i] > b[i]) return 1;
+	}
+	return 0;
+}
+
+
+INCLUDE stddef.h
+
+Now we will need to verify the ELF header by doing.
+
+if (memcmp(&header.e_ident[EI_MAG0], ELFMAG, SELFMAG) != 0 ||
+    header.e_ident[EI_CLASS] != ELFCLASS64 ||
+    header.e_type != ET_EXEC ||
+    header.e_machine != EM_X86_64 || header.e_version != EV_CURRENT) {
+
+    Print(L"Kernel ELF bad.\n");
+} else {
+    // Continue from here.
+}
+
+
+Now we need to load the program header.
+
+Create a variable of type Elf64_Phdr*
+which will be our program headers.
+
+Now do
+
+kernel->SetPosition(kernel, header.e_phoff);
+
+which will set the offset that it will load at in the array of bytes for the next
+time we call Read()
+
+Now create a variable of type UINTN which will be
+called progheadersize which will be equal to
+header.e_phnum * header.e_phentsize.
+
+We need to allocate some memory for the program headers.
+
+Do that by using
+
+sysTable->BootServices->AllocatePool(EfiLoaderData, progheadersize, (void**)&programheaders)
+
+Now we will read it info memory.
+
+kernel->Read(kernel, &progheadersize, programheaders);
+
+Now do this:
+
+for (Elf64_Phdr* phdr = phdrs; (char*)phdr < (char*)phdrs + header.e_phnum * header.e_phentsize; phdr = (Elf64_Phdr*)((char*)phdr + header.e_phentsize)) {
+    // Continue in here.
+}
+
+
+Now use a switch statement to check
+phdr->p_type
+
+if it is PT_LOAD
+then create a scope with '{}'
+
+and create a variable called pages which will be type int and
+equal to (phdr->p_memsz + 0x1000 - 1) / 0x1000.
+And another one with type Elf64_Addr called segment which
+is assigned to phdr->p_paddr.
+
+Now call:
+
+sysTable->BootServices->AllocatePages(AllocateAddress, EfiLoaderData, pages, &segment).
+
+And do:
+
+kernel->SetPosition(kernel, phdr->p_offset);
+UINTN size = phdr->p_filesz;
+kernel->Read(kernel, &size, (void*)segment);
+break;
+
+
+Now outside of the loop create a function pointer like so:
+
+
+void(*kernel_entry)() = ((__attribute__((sysv_abi))void(*)())header.e_entry);
+
+And you can call it like so:
+
+kernel_entry();
+
+
+----------  GOP   ----------
+
+Want to write pixels to the screen?
+That's where graphics output protocol or GOP comes in.
+
+Let's get started.
+
+Create a function that returns framebuffer_t* called initGOP()
+
+It will take one parameter:
+
+EFI_SYSTEM_TABLE* sysTable.
+
+framebuffer_t will be defined later.
+
+We will need to get the GOP protocol GUID.
+
+Create a variable called gopGuid with type EFI_GUID and is set
+to EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID.
+Next, create a variable of type EFI_GRAPHICS_OUTPUT_PROTOCOL* called gop.
+Now create a variable of type EFI_STATUS called status
+and set it equal to uefi_call_wrapper(BS->LocateProtocol, 3, &gopGuid, NULL, (void**)&gop).
+uefi_call_wrapper() is just a little helper function to make calling
+certain UEFI functions easier.
+
+do:
+
+if (EFI_ERROR(status)) {
+    return NULL;
+}
+
+Now just create a struct called framebuffer which will
+look like this
+
+typedef struct {
+    void* baseAddr;
+    size_t bufferSize;
+    unsigned int width;
+    unsigned int height;
+    unsigned int ppsl;      // Pixels per scanline (don't worry about this).
+} framebuffer_t;
+
+
+If I were you, I would probably grab the struct
+from kernel/src/drivers/FrameBuffer.h
+
+
+Now inside your function that prepares GOP create a pointer instance
+of the framebuffer_t struct.
+
+Do this:
+
+sysTable->BootServices->AllocatePool(EfiLoaderData, sizeof(framebuffer_t), (void**)&<framebuffer instance name>);
+
+
+Set it's baseAddr equal to (void*)gop->Mode->FrameBufferBase.
+Set it's bufferSize equal to gop->Mode->FrameBufferSize.
+Set it's width equal to gop->Mode->Info->HorizontalResolution.
+Set it's height equal to gop->Mode->Info->VerticalResolution.
+Set it's ppsl equal to gop->Mode->Info->PixelsPerScanLine.
+
+
+Now return the framebuffer.
+
+
+In efi_main create a frame_buffer_t* newBuffer = initalizeGOP(sysTable);
+
+
+Now you want to return to the normal directory do the following commands:
+
+mkdir kernel/drivers kernel/drivers/impl
+
+Now you want to edit kernel/drivers/FrameBuffer.h
+
+
+(NOT  NEEDED).
+And you want to paste that framebuffer_t struct that you had in the bootloader.
+
+(NEEDED)
+Now include FrameBuffer.h in kernel/src/kernel.c
+
+And make sure _start takes a pointer to framebuffer_t*.
+
+
+Now in the bootloader change the function pointer from this:
+
+void(*kernel_entry)() = ((__attribute__((sysv_abi))void(*)())kernelHeader.e_entry);
+
+To this:
+
+void(*kernel_entry)(framebuffer_t*) = ((__attribute__((sysv_abi))void(*)(framebuffer_t*))kernelHeader.e_entry);
+
+
+Now you will need to decode a font file.
+
+Do this:
+
+#define PSF1_MAGIC0 0x00000036
+#define PSF1_MAGIC1 0x00000004
+
+
+typedef struct {
+    unsigned char magic[2];
+    unsigned char mode;
+    unsigned char chsize;
+} psf1_header_t;
+
+
+typedef struct {
+    psf1_header_t* header;
+    void* glyphBuffer;
+} psf1_font_t;
+
+
+Now we need to create a function that loads the font.
+
+The function goes like this:
+
+psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HAANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
+    EFI_FILE* font = loadFile(dir, path, imageHandle, systable);
+
+    if (!(font)) {
+        return NULL;    // File does not exist.
+    }
+
+    psf1_header_t* fontHeader;
+    systable->BootServices->AllocatePool(EfiLoaderData, sizeof(psf1_header_t), (void**)&fontHeader);   // Allocate memory for header.
+    UINTN size = sizeof(psf1_header_t);
+    font->Read(font, &size, fontHeader);
+
+    if (!(fontHeader->magic[0] & PSF1_MAGIC0) || !(fontHeader->magic[1] & PSF1_MAGIC1)) {
+        return NULL;   // Format bad.
+    }
+
+    UINTN glyphBuffersize = fontHeader->chsize * 256;
+
+    if (fontHeader->mode == 1) {
+        glyphBuffersize = fontHeader->chsize * 512;
+    }
+
+    void* glyphBuffer;
+    font->SetPosition(font, sizeof(psf1_header_t));
+    systable->BootServices->AllocatePool(EfiLoaderData, glyphBuffersize, (void**)&glyphBuffer);
+    font->Read(font, &glyphBuffersize, glyphBuffer);
+
+    psf1_font_t* fontRes;
+    systable->BootServices->AllocatePool(EfiLoaderData, sizeof(psf1_font_t), (void**)&fontRes);
+
+    fontRes->header = fontHeader;
+    fontRes->glyphBuffer = glyphBuffer;
+    return fontRes;
+}
+
+
+Now in our main create a psf1_font_t* newfont which is equal
+to loadFont(NULL, L"zap-light16.psf", imageHandle, sysTable);
+
+Now, check if newfont is NULL (if you made it return NULL when not found)
+if it is then the font
+is not found.
+
+
+Now what you wanna do is make both the function poiunter and the kernel entry function
+take a psf1_font_t* argument as the font.
+
+Of course you ware going to have to copy the font stuff over
+to the LFB driver in the kernel.
+
+Now you can write a putstring function with
+the helper putchar function.
+
+
+
+----------  EFI Memory Map  ----------
+
+
+We can use the EFI memory map to find out
+what memory segments our kernel can use.
+
+We need the EFI memory map first.
+
+Go to gnu-efi/bootloader/main.c
+and edit it.
+
+
+In efi_main create a variable
+of type EFI_MEMORY_DESCRIPTOR*
+and is assigned to NULL which will be our map.
+
+EFI_MEMORY_DESCRIPTOR describes a memory segment.
+
+And three with UINTN which will be our
+mapSize mapKey and descriptorSize.
+
+Also create a variable of type UINT32 called
+descriptorVersion (don't worry about this).
+
+
+mapSize is just the size of the map.
+descriptor size is size of each descriptor
+entry.
+
+And map key is something we don't need to
+worry about.
+
+Do:
+
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);   // Gets size.
+sysTable->BootServices->AllocatePool(EfiLoaderData, mapSize, (void**)&map);    // Allocates memory for map.
+sysTable->BootServices->GetMemoryMap(&mapSize, map, &mapKey, &descriptorSize, &descriptorVersion);          // Reads map into memory.
+
+
+Also create a memory_info_t struct that will hold
+- EFI_MEMORY_DESCRIPTOR* map;
+- UINTN mapSize
+- UINTN mapDescriptorSize.
+
+
+Now do:
+
+memory_info_t mem_info = {
+    .map = map,
+    .mapSize = mapSize,
+    .mapDescriptorSize = descriptorSize
+};
+
+And make sure both the function pointer and
+kernel_start take a mem_info struct as an
+argument.
+
+Also make sure bootservices is no longer active
+so watchdog doesn't think it has crashed
+and reboot the system by doing:
+
+sysTable->BootServices->ExitBootServices(imageHandle, mapKey);
+
+Do:
+
+mkdir kernel/src/drivers/memory/ kernel/src/drivers/memory/impl
+
+Create a file inside kernel/src/drivers/memory
+
+called memoryInfo.h
+
+Paste the memory_info struct you made
+in the bootloader and also do:
+
+extern const char* const memseg[];
+
+That will be defined in memoryInfo.c
+
+You will need to make a struct called
+memdesc_t.
+
+The following will be declared in the struct:
+
+- uint32_t type
+- void* physAddr
+- void* virtAddr
+- uint64_t numPages
+- uint64_t attr
+
+You will also need to include stdint.h
+
+Make sure after you paste the memory_info_t
+struct to replace EFI_MEMORY_DESCRIPTOR in
+the struct to memdesc_t.
+
+Also, replace UINTN to uint64_t.
+
+Now, make a const char* array in memoryInfo.c
+that holds the following:
+
+"EfiReservedMemoryType",
+"EfiLoaderCode",
+"EfiLoaderData",
+"EfiBootServicesCode",
+"EfiBootServicesData",
+"EfiRuntimeServicesCode",
+"EfiRuntimeServicesData",
+"EfiConventionalMemory",
+"EfiUnusableMemory",
+"EfiACPIReclaimMemory",
+"EfiACPIMemoryNVS",
+"EfiMemoryMappedIO",
+"EfiMemoryMappedIOPortSpace",
+"EfiPalCode",
+
+
+Now in kernel/src/kernel.c
+
+We need to see each memory map
+entry.
+
+We have to find how many entries we have by doing:
+
+uint64_t mMapEntries = (<mem_info_t instance>).mapSize / (<mem_info_t instance>).mapDescriptorSize;
+
+Now we will iterate through each entry:
+
+map IS DEFINED IN mem_info_t struct.
+
+for (int i = 0; i < mMapEntries; ++i) {
+    memdesc_t* desc = (memdesc_t*)((uint64_t)(<mem_info_t instance>).mMap + (i * (<mem_info_t>).descriptorSize));
+}
+
+Now inside the loop you may print the
+memory sections by including
+memoryInfo.h
+
+and doing <your print function>((<name of your const char* array>)[desc->type]);
+
+Also make sure at the end of _start
+which is the kernel entry to have a
+
+while (1) {
+    __asm__ __volatile__("hlt");
+}
