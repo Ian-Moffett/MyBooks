@@ -1,0 +1,60 @@
+
+Create two folders:
+
+mkdir kernel/src/memory  kernel/src/memory/impl
+
+Now inside kernel/src/memory/ create a file
+called GDT.h
+
+You will need to includ stdint.h
+
+
+Create a packed struct called gdtr_t.
+You can pack it like this:
+
+typedef struct {
+} __attribute__((packed)) gdtr_t;
+
+The GDTR tells the CPU where the GDT is
+and how big it is.
+
+Inside gdr_t you will need the following:
+
+- uint16_t size
+- uint64_t offset
+
+
+Now create another packed struct called gdt_entry_t.
+
+That will have the following:
+
+- uint16_t limit0
+- uint16_t base0
+- uint8_t base1
+- uint8_t access_byte    // Describes the memory segment.
+- uint8_t limit1
+- uint8_t flags
+
+Now, we need to create the actual GDT.
+
+Create a packed struct called gdt_t.
+
+It will have the following:
+
+- gdt_entry_t null
+- gdt_entry_t kernelcode
+- gdt_entry_t kerneldata
+- gdt_entry_t usercode
+- gdt_entry_t userdata
+
+And align it with __attribute__((aligned(0x1000)))
+
+Make sure it also has the packed attribute.
+
+Now do:
+
+extern gdt_t gdt.
+void load_gdt(gdtr_t* desc);
+
+Now create a file with the path:
+kernel/src/memory/impl/GDT.c

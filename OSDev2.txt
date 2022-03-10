@@ -575,3 +575,228 @@ which is the kernel entry to have a
 while (1) {
     __asm__ __volatile__("hlt");
 }
+
+
+----------  Global Descriptor Table (GDT)  ----------
+
+
+Create two folders:
+
+mkdir kernel/src/memory  kernel/src/memory/impl
+
+Now inside kernel/src/memory/ create a file
+called GDT.h
+
+You will need to includ stdint.h
+
+
+Create a packed struct called gdtr_t.
+You can pack it like this:
+
+typedef struct {
+} __attribute__((packed)) gdtr_t;
+
+The GDTR tells the CPU where the GDT is
+and how big it is.
+
+Inside gdr_t you will need the following:
+
+- uint16_t size
+- uint64_t offset
+
+
+Now create another packed struct called gdt_entry_t.
+
+That will have the following:
+
+- uint16_t limit0
+- uint16_t base0
+- uint8_t base1
+- uint8_t access_byte    // Describes the memory segment.
+- uint8_t limit1
+- uint8_t flags
+
+Now, we need to create the actual GDT.
+
+Create a packed struct called gdt_t.
+
+It will have the following:
+
+- gdt_entry_t null
+- gdt_entry_t kernelcode
+- gdt_entry_t kerneldata
+- gdt_entry_t usercode
+- gdt_entry_t userdata
+
+And align it with __attribute__((aligned(0x1000)))
+
+Make sure it also has the packed attribute.
+
+Now do:
+
+extern gdt_t gdt.
+void gdt_install();
+
+Now create a file with the path:
+kernel/src/memory/impl/GDT.c
+
+Now create a multiarray of gdt_t that is
+alligned to 0x1000
+like this:
+
+__attribute__((aligned(0x1000))) gdt_t gdt = {
+    {0, 0, 0, 0x00, 0x00},  // Null descriptor.
+    {0, 0, 0, 0x9A, 0xA0},  // Kernel code.
+    {0, 0, 0, 0x92, 0xA0},  // Kernel data.
+    {0, 0, 0, 0x9A, 0xA0},  // User code.
+    {0, 0, 0, 0x92, 0xA0}   // User data.
+};
+
+
+Now, create a function in declartion in GDT.c
+like this:
+
+void load_gdt(gdtr_t* gdtr);
+
+Now create a function that has a static uint8_t called
+start which is set to zero, check if start is 1 and
+if so return.
+
+Create a static gdtr_t instance called gdtr and make
+it's size sizeof(gdt) - 1 and it's offset to
+(uint64_t)&gdt.
+
+Now call load_gdt and pass address of gdtr.
+
+Now in kernel.c call gdt_install().
+
+
+----------  Interrupt Descriptor Table (IDT)  ----------
+
+Create 2 files with the path:
+
+kernel/src/interrupts/IDT.h
+kernel/src/interrupts/impl/IDT.c
+
+in IDT.h you need to do the following:
+
+include stdint.h and create an IDT descriptor.
+
+Define these macros
+
+#define TRAP_GATE_FLAGS 0x8F
+#define INT_GATE_FLAGS 0x8E
+#define INT_GATE_USER_FLAGS 0xEE
+
+A IDT descriptor describes an interrupt.
+
+Inside your IDT descriptor struct it will have
+the following:
+
+- uint16_t isr_low          // Low bits of the ISR.
+- uint16_t selector         // The segment the interrup should operate in.
+- uint8_t ist               // Interrupt stack table.
+- uint8_t attr              // Flags.
+- uint16_t isr_mid          // Middle bits of the ISR.
+- uint32_t isr_high         // High bits of the ISR.
+- uint32_t reserved         // Reserved by CPU manufacturer (DO NOT USE).
+
+MAKE SURE IT IS PACKED WITH __attribute__((packed))
+
+Now we will need to create the IDTR which will tell
+the CPU where the IDT is loaded in memory.
+
+It will have the following:
+
+- uint16_t limit
+- uint64_t base
+
+MAKE SURE IT IS PACKED
+
+
+When the interrupt occurs an interrupt frame will be pushed
+to the stack which will give us some information about
+the current register space states.
+
+We need to make the interrupt frame.
+So, create a packed struct with the following entries:
+
+- uint64_t rip       // Instruction pointer.
+- uint64_t cs        // Code segment.
+- uint64_t rflags    // To be honest, I am not quite sure what this is.
+- uint64_t rsp       // Stack pointer (points to the top of the stack).
+- uint64_t ss        // Stack segment (points to the segment that contains the stack).
+
+
+Now we need to create two function declarations:
+
+void set_idt_entry(unsigned char entry, void* isr, unsigned char flags);
+void idt_install()
+
+Now, inside IDT.c we will define these functions.
+
+Make sure in IDT.c
+
+to have a array of 256 idt_descriptors
+that is static and global
+
+and a idtr instance that is also static
+and global.
+
+void set_idt_entry(unsigned char entry, void* isr, unsigned char flags) {
+    uint64_t addr = (uint64_t)isr;          // Gets the address of the ISR.
+    idt[entry].isr_low = addr & 0xFFFF;     // Grabs the lower bits.
+    idt[entry].isr_high = (addr >> 32) & 0xFFFFFFFF;        // Grabs the high bits.
+    idt[entry].isr_mid = (addr >> 16) & 0xFFFF;             // Grabs the middle bits.
+    idt[entry].selector = 0x08;                             // We may need to change this as we will create usermode.
+    idt[entry].reserved = 0x0;                              // Just set to zero.
+    idt[entry].attr = flags;
+    idt[entry].ist = 0;                                     // Set to zero as well.
+}
+
+
+void idt_install() {
+    idtr.limit = (uint16_t)sizeof(idt_desc_t) * 255;  // Sets the limit to the size of idt_desc_t * (256 - 1)
+    idtr.base = (uint64_t)&idt[0];                    // Gets the base.
+    __asm__ __volatile__("lidt %0" : : "memory" (idtr));
+}
+
+
+Now, inside the folder where you put the IDT.h
+create a file called ISR.h
+
+It will have declarations of interrupt service routines
+that will be called by the CPU when an interrupt
+occurrs.
+
+Create a function declaration like this:
+
+__attribute__((interrupt)) div0_handler(int_frame_t*);
+
+
+Now create an ISR.c in the impl folder.
+
+
+Copy the declaration and add a body (keep the attribute).
+
+CHALLANGE:
+Try writing it to clear the screen and displaying an error message.
+
+Now inside kernel/src/kernel.c under where you loaded the GDT
+put:
+
+set_idt_entry(0x0, div0_handler, TRAP_GATE_FLAGS);
+And then under that call idt_install()
+
+
+Now at the bottom of your file (before the halt of course).
+
+Try doing this:
+
+if (0 / 0 == 1) {}
+
+It should raise an exception, if it doesn't
+then you may have did something wrong.
+
+If you cannot figure it out, put an issue on
+my GitHub and I will happily help you.
