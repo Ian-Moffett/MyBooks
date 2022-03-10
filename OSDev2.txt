@@ -152,42 +152,6 @@ You will need to include elf.h
 Now define a variable of type Elf64_Ehdr
 which will be our headers.
 
-Define these variables of these types.
-
-- UINTN (this will the size of the file info)[fileInfoSize]
-- EFI_FILE_INFO* (this will be the file info)[fileInfo].
-
-If you wanna know what those square brackets are next to
-the descriptions of the types I wrote, that's just what
-I will be refering the variables as.
-
-
-
-Now to get the information.
-
-
-Call kernel->GetInfo() to get fileinfo size.
-
-and pass the following:
-
-- kernel
-- &gEfiFileInfoGuid
-- &fileinfoSize
-- NULL
-
-Now, we are going to have to allocate some memory for
-the file info.
-
-You can do that by using:
-
-sysTable->BootServices->AllocatePool()
-
-and passing the following:
-
-- EfiLoaderData (don't worry about this).
-- fileInfoSize
-- (void**)&fileInfo
-
 Now get the size with sizeof(header) and store it in
 a varible of type UINTN  [size].
 
@@ -403,12 +367,13 @@ typedef struct {
     void* glyphBuffer;
 } psf1_font_t;
 
+I WOULD COPY IT FROM FrameBuffer.h
 
 Now we need to create a function that loads the font.
 
 The function goes like this:
 
-psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HAANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
+psf1_font_t* load_psf1_font(EFI_FILE* dir, CHAR16* path, EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systable) {
     EFI_FILE* font = loadFile(dir, path, imageHandle, systable);
 
     if (!(font)) {
@@ -595,6 +560,8 @@ map IS DEFINED IN mem_info_t struct.
 for (int i = 0; i < mMapEntries; ++i) {
     memdesc_t* desc = (memdesc_t*)((uint64_t)(<mem_info_t instance>).mMap + (i * (<mem_info_t>).descriptorSize));
 }
+
+NOTE: To change bytes to KB divide by 1024.
 
 Now inside the loop you may print the
 memory sections by including
