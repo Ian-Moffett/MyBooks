@@ -980,7 +980,7 @@ another command.
 Also create a function called mouse_wait_read()
 
 which will do the same thing as the last function
-but and the inportb result by 1 and seeing if it 
+but AND the inportb result by 1 and seeing if it 
 is set.
 
 Create a function called mouse_write(uint8_t byte) 
@@ -992,7 +992,7 @@ mouse_wait();
 outportb(0x60, byte);
 
 Create a function called mouse_read() which will
-do:
+return uint8_t and do:
 
 mouse_wait_read();
 return inportb(0x60);
@@ -1014,4 +1014,119 @@ outportb(0x60, s);
 mouse_write(0xF6);
 mouse_read();           // ACK.
 mouse_write(0xF4);      // Enable mouse.
+mouse_read();
 
+In kernel.c unmask all pits of PIC1_DATA
+and PIC2_DATA but for PIC1_DATA leave bit 1 masked.
+
+Create a global static variable in Mouse.c 
+called cycle which is type uint8_t and equal to 
+0.
+
+And a static global arrary called packet which has
+4 elements.
+
+And a bool called packetReady set to false.
+
+(INCLUDE stdbool.h)
+
+Create a function declaration in Mouse.h
+called mouseGenPacket(uint8_t byte)
+
+It will do:
+
+switch (cycle) {
+    case 0:
+        if (packetReady) break;
+        if (!(byte & 0b00001000)) break;        // Checks if always 1 is 1 if not it is out of sync.
+        packet[0] = byte;
+        ++cycle;
+        break;
+    case 1:
+        if (packetReady) break;
+        packet[1] = byte;
+        ++cycle;
+        break;
+    case 2:
+        if (packetReady) break;
+        packet[2] = byte;
+        packetReady = true;
+        cycle = 0;
+        break;
+}
+
+Create a loop in kernel.c which will keep 
+calling handleMousePacket() (WILL BE DEFINED LATER)
+
+Create a global static variable of type point_t which
+is basically a struct in Mouse.h that has 
+2 longs with one called x and the other called y and name
+it pos.
+
+Now make a function called handleMousePacket in mouse.c
+also have a declaration of it in the header.
+
+It will do:
+
+extern canvas_t canvas;
+
+if (!(packetReady)) return;
+packetReady = false;
+bool xNeg, yNeg, xOverflow, yOverflow;
+
+if (packet[0] & PS2XSign) {
+    xNeg = true;
+} else {
+    xNeg = false;
+}
+
+if (packet[0] & PS2YSign) {
+    yNeg = true;
+} else {
+    yNeg = false;
+}
+
+if (packet[0] & PS2XOverflow) {
+    xOverflow = true;
+} else {
+    xOverflow = false;
+}
+
+if (packet[0] & PS2YOverflow) {
+    yOverflow = true;
+} else {
+    yOverflow = false;
+}
+
+if (!(xNeg)) {
+    pos.x += packet[1];
+    if (xOverflow) {
+        pos.x += 255;
+    }
+} else {
+    pos.x -= packet[1];
+    if (xOverflow) {
+        pos.x -= 255;
+    }
+}
+
+if (!(yNeg)) {
+    pos.y -= packet[2];
+    if (yOverflow) {
+        pos.y -= 255;
+    }
+} else {
+    pos.y += packet[2];
+    if (xOverflow) {
+        pos.y += 255;
+    }
+}
+
+if (pos.x < 0) pos.x = 0;
+if (pos.x > canvas.lfb->widht - 1) pos.x = canvas.lfb->width - 1;
+if (pos.y < 0) pos.y = 0;
+if (pos.y > canvas.lfb->height - 1) pos.y = canvas.lfb->height - 1;
+kwrite(&canvas, "O", pos.x, pos.y);
+
+
+MAKE SURE TO INCLUDE IO.h AND FrameBuffer.h
