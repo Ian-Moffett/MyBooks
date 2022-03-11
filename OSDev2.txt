@@ -879,7 +879,7 @@ or not.
 
 So do:
 
-uint8_t master_bm, slave_bm
+uint8_t master_bm, slave_bm;
 master_bm = inportb(PIC1_DATA);
 io_wait();                          // To wait for PIC to catch up.
 slave_bm = inportb(PIC2_DATA);
@@ -949,3 +949,69 @@ void PIC_sendEOI(unsigned char irq) {
 
 	outb(PIC1_COMMAND, PIC_EOI);
 }
+
+
+
+
+----------  PS/2 Mouse  ---------- 
+
+PS/2 mouse is a device that talks to PS/2 controller
+thorugh serial communication.
+
+MOUSE VECTOR IS 0x2C (REMEMBER THIS).
+
+Create a function called mouse_wait() that will do:
+
+uint64_t timeout = 100000;
+
+while (timeout--) {
+    if (!(inportb(0x64) & 0b10)) {
+        return;
+    }
+}
+
+What this will do is it will check the address
+0x64 on the IO bus to see if the second bit is not 
+set.
+
+If it is not set then that means we can send 
+another command.
+
+Also create a function called mouse_wait_read()
+
+which will do the same thing as the last function
+but and the inportb result by 1 and seeing if it 
+is set.
+
+Create a function called mouse_write(uint8_t byte) 
+which will do:
+
+mouse_wait();
+outportb(0x64, 0xD4);
+mouse_wait();
+outportb(0x60, byte);
+
+Create a function called mouse_read() which will
+do:
+
+mouse_wait_read();
+return inportb(0x60);
+
+Create a function to enable mouse,it will do:
+
+outportb(0x64, 0xA8);       // Enabling auxiliary device (mouse).
+mouse_wait();
+outportb(0x64, 0x20);       // Command byte to keyboard controller.
+mouse_wait_read()
+uint8_t s = inportb(0x60);      // Get status byte.
+s |= 0b10                  // Set second bit.
+mouse_wait();
+outportb(0x64, 0x60);           // Command byte.
+mouse_wait();
+outportb(0x60, s);
+
+// We will tell the mouse to use default settings.
+mouse_write(0xF6);
+mouse_read();           // ACK.
+mouse_write(0xF4);      // Enable mouse.
+
